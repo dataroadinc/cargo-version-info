@@ -20,8 +20,10 @@ mod github;
 mod version;
 
 use commands::{
+    BadgesArgs,
     BuildVersionArgs,
     ChangedArgs,
+    ChangelogArgs,
     CompareArgs,
     CurrentArgs,
     DevArgs,
@@ -29,9 +31,11 @@ use commands::{
     LatestArgs,
     NextArgs,
     PostBumpHookArgs,
+    PrLogArgs,
     PreBumpHookArgs,
     RustToolchainArgs,
     TagArgs,
+    UpdateReadmeArgs,
 };
 
 #[derive(Parser, Debug)]
@@ -83,6 +87,18 @@ enum Command {
     /// Post-bump hook for cog integration (verifies bump succeeded)
     #[command(name = "post-bump-hook")]
     PostBumpHook(PostBumpHookArgs),
+    /// Generate changelog from conventional commits
+    #[command(name = "changelog")]
+    Changelog(ChangelogArgs),
+    /// Generate PR log from merged pull requests
+    #[command(name = "pr-log")]
+    PrLog(PrLogArgs),
+    /// Generate badges for quality metrics
+    #[command(name = "badges")]
+    Badges(BadgesArgs),
+    /// Update README with badges
+    #[command(name = "update-readme")]
+    UpdateReadme(UpdateReadmeArgs),
 }
 
 /// Check if any .env* files exist in the current directory.
@@ -141,5 +157,9 @@ fn main() -> Result<()> {
         Command::Changed(args) => commands::changed(args),
         Command::PreBumpHook(args) => commands::pre_bump_hook(args),
         Command::PostBumpHook(args) => commands::post_bump_hook(args),
+        Command::Changelog(args) => commands::changelog(args),
+        Command::PrLog(args) => commands::pr_log(args),
+        Command::Badges(args) => commands::badges(args),
+        Command::UpdateReadme(args) => commands::update_readme(args),
     }
 }

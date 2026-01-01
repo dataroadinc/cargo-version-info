@@ -1,7 +1,9 @@
 //! Command implementations.
 
+mod badges;
 mod build_version;
 mod changed;
+mod changelog;
 mod common;
 mod compare;
 mod current;
@@ -10,11 +12,17 @@ mod dioxus;
 mod latest;
 mod next;
 mod post_bump_hook;
+mod pr_log;
 mod pre_bump_hook;
 mod rust_toolchain;
 mod tag;
+mod update_readme;
 
 // Re-export all command argument structs
+pub use badges::{
+    BadgesArgs,
+    badges,
+};
 pub use build_version::{
     BuildVersionArgs,
     build_version,
@@ -22,6 +30,10 @@ pub use build_version::{
 pub use changed::{
     ChangedArgs,
     changed,
+};
+pub use changelog::{
+    ChangelogArgs,
+    changelog,
 };
 pub use compare::{
     CompareArgs,
@@ -50,6 +62,10 @@ pub use post_bump_hook::{
     PostBumpHookArgs,
     post_bump_hook,
 };
+pub use pr_log::{
+    PrLogArgs,
+    pr_log,
+};
 pub use pre_bump_hook::{
     PreBumpHookArgs,
     pre_bump_hook,
@@ -61,4 +77,8 @@ pub use rust_toolchain::{
 pub use tag::{
     TagArgs,
     tag,
+};
+pub use update_readme::{
+    UpdateReadmeArgs,
+    update_readme,
 };
