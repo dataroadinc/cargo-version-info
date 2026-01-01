@@ -1,0 +1,22 @@
+{
+    "editor.formatOnSave": true,
+    "[rust]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "rust-lang.rust-analyzer"
+    },
+    "rust-analyzer.rustfmt.extraArgs": [
+        "+nightly"
+    ],
+    "rust-analyzer.check.command": "clippy",
+    "rust-analyzer.check.extraArgs": [
+        "--",
+        "-W",
+        "missing_docs",
+        "-W",
+        "clippy::missing_errors_doc",
+        "-W",
+        "clippy::missing_panics_doc",
+        "-W",
+        "clippy::missing_safety_doc"
+    ]
+}
