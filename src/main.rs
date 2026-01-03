@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use cargo_version_info::commands;
 use cargo_version_info::commands::{
-    BadgesArgs,
+    BadgeArgs,
     BuildVersionArgs,
     ChangedArgs,
     ChangelogArgs,
@@ -126,8 +126,8 @@ enum VersionInfoCommand {
     #[command(name = "pr-log")]
     PrLog(PrLogArgs),
     /// Generate badges for quality metrics
-    #[command(name = "badges")]
-    Badges(BadgesArgs),
+    #[command(name = "badge")]
+    Badge(BadgeArgs),
     /// Update README with badges
     #[command(name = "update-readme")]
     UpdateReadme(UpdateReadmeArgs),
@@ -204,7 +204,7 @@ fn main() -> Result<()> {
                 VersionInfoCommand::PostBumpHook(args) => commands::post_bump_hook(args),
                 VersionInfoCommand::Changelog(args) => commands::changelog(args),
                 VersionInfoCommand::PrLog(args) => commands::pr_log(args),
-                VersionInfoCommand::Badges(args) => commands::badges(args),
+                VersionInfoCommand::Badge(args) => commands::badge(args),
                 VersionInfoCommand::UpdateReadme(args) => commands::update_readme(args),
                 VersionInfoCommand::Version => commands::build_version_default(),
             };

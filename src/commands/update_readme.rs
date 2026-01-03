@@ -12,7 +12,7 @@
 //! cargo version-info update-readme --readme docs/README.md
 //!
 //! # Generate badges first, then inject
-//! cargo version-info badges --output badges.md
+//! cargo version-info badge all > badges.md
 //! cargo version-info update-readme --badges badges.md
 //! ```
 

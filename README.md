@@ -1,5 +1,11 @@
 # cargo-version-info
 
+[![Crates.io](https://img.shields.io/crates/v/cargo-version-info.svg)](https://crates.io/crates/cargo-version-info)
+[![Documentation](https://docs.rs/cargo-version-info/badge.svg)](https://docs.rs/cargo-version-info)
+[![CI](https://github.com/agnos-ai/cargo-version-info/workflows/CI%2FCD/badge.svg)](https://github.com/agnos-ai/cargo-version-info/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/agnos-ai/cargo-version-info/blob/main/LICENSE)
+[![Downloads](https://img.shields.io/crates/d/cargo-version-info.svg)](https://crates.io/crates/cargo-version-info)
+
 A Cargo subcommand for unified version management across CI/CD, Rust
 code, and shell scripts.
 
@@ -11,15 +17,21 @@ workflows, bash scripts, Makefiles, and Rust build scripts.
 
 ## Installation
 
+### Using cargo-binstall (Recommended)
+
+The fastest way to install pre-built binaries:
+
 ```bash
-# Via cargo-binstall (recommended)
+cargo install cargo-binstall
 cargo binstall cargo-version-info
+```
 
-# Via cargo install
+### Using cargo install
+
+Build from source (slower, requires Rust toolchain):
+
+```bash
 cargo install cargo-version-info
-
-# From source
-cargo install --path .
 ```
 
 ## Commands

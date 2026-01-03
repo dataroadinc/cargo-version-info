@@ -4,19 +4,21 @@ This document contains information for repository maintainers.
 
 ## Production Tool Standards
 
-⚠️ **Important**: cargo-version-info is a production tool used in CI/CD
-pipelines. Users depend on it for version management across their projects.
-This demands:
+⚠️ **Important**: cargo-version-info is a production tool used in
+CI/CD pipelines. Users depend on it for version management across
+their projects. This demands:
 
 - **Strict review standards** - Changes must be thoroughly reviewed
-- **Mandatory signed commits** - Verify authenticity of all code changes
+- **Mandatory signed commits** - Verify authenticity of all code
+  changes
 - **Linear history** - Makes auditing and rollback simpler
 - **Comprehensive CI** - Every commit must pass all checks
 - **Zero-warning policy** - Clippy warnings can hide real issues
-- **Backward compatibility** - Breaking changes require careful consideration
+- **Backward compatibility** - Breaking changes require careful
+  consideration
 
-These requirements ensure reliability and maintainability for a tool used
-in critical workflows.
+These requirements ensure reliability and maintainability for a tool
+used in critical workflows.
 
 ## GitHub Repository Settings
 
@@ -41,7 +43,8 @@ gh api repos/agnos-ai/cargo-version-info/branches/main/protection
 
 ### Required Branch Protection Rules
 
-**For a production tool, ALL of these must be enabled** on the `main` branch:
+**For a production tool, ALL of these must be enabled** on the `main`
+branch:
 
 - [x] **Require a pull request before merging** ⚠️ REQUIRED
   - Require approvals: 1 minimum
@@ -53,10 +56,11 @@ gh api repos/agnos-ai/cargo-version-info/branches/main/protection
 - [x] **Require signed commits** ⚠️ REQUIRED
 - [x] **Require linear history** ⚠️ REQUIRED
 - [x] **Do not allow bypassing the above settings** ⚠️ REQUIRED
-- [x] **Restrict who can push to matching branches** - Maintainers only
+- [x] **Restrict who can push to matching branches** - Maintainers
+      only
 
-**Why so strict?** This tool is used in CI/CD pipelines. A broken release
-could break users' workflows. Every safeguard matters.
+**Why so strict?** This tool is used in CI/CD pipelines. A broken
+release could break users' workflows. Every safeguard matters.
 
 ### Secrets Configuration
 
@@ -68,8 +72,8 @@ Ensure these secrets are configured:
 
 ## Release Process
 
-Releases are automated via GitHub Actions when the version in `Cargo.toml`
-changes:
+Releases are automated via GitHub Actions when the version in
+`Cargo.toml` changes:
 
 1. Update version in `Cargo.toml`
 2. Commit and push to `main`
@@ -99,12 +103,17 @@ When reviewing PRs:
 
 When reviewing PRs that touch version parsing, comparison, or output:
 
-- [ ] **Semver compliance**: Verify version parsing follows SemVer spec
-- [ ] **Edge cases**: Handle pre-release versions, build metadata correctly
-- [ ] **Output formats**: Ensure all formats (version, tag, json, github-actions) work
-- [ ] **Error messages**: Clear, actionable error messages for invalid input
+- [ ] **Semver compliance**: Verify version parsing follows SemVer
+      spec
+- [ ] **Edge cases**: Handle pre-release versions, build metadata
+      correctly
+- [ ] **Output formats**: Ensure all formats (version, tag, json,
+      github-actions) work
+- [ ] **Error messages**: Clear, actionable error messages for invalid
+      input
 - [ ] **Tests**: Comprehensive test coverage for version operations
-- [ ] **Documentation**: Update rustdoc with examples and error conditions
+- [ ] **Documentation**: Update rustdoc with examples and error
+      conditions
 
 ### Best Practices
 

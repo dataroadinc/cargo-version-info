@@ -14,6 +14,20 @@ homepage = "https://github.com/agnos-ai/cargo-version-info"
 rust-version = "1.92.0"
 publish = true
 
+exclude = [
+    ".cargo/",
+    ".cargo-husky/",
+    ".clippy.toml",
+    ".cursor/",
+    ".github/",
+    ".gitignore",
+    ".rust-toolchain.toml",
+    ".vscode/",
+    "cog.toml",
+    "rustfmt.toml",
+    "scripts/",
+]
+
 [[bin]]
 name = "cargo-version-info"
 path = "src/main.rs"
@@ -21,6 +35,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0.100"
 bstr = "1.11.1"
+cargo_metadata = "0.23.1"
 clap = { version = "4.5.53", default-features = false, features = [
     "derive",
     "env",
@@ -43,8 +58,12 @@ octocrab = { version = "0.49.5", default-features = false, features = [
     "jwt-aws-lc-rs",
 ] }
 regex = "1.11.1"
+reqwest = { version = "0.13.1", default-features = false, features = [
+    "rustls",
+] }
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread", "fs"] }
 toml = "=0.9.8"
 
 [build-dependencies]

@@ -1,7 +1,7 @@
 # Publishing Guide
 
-This project uses a **version-change detection** workflow
-for automated publishing to crates.io.
+This project uses a **version-change detection** workflow for
+automated publishing to crates.io.
 
 ## Branch Protection & Linear History
 
@@ -17,8 +17,8 @@ This ensures a clean, linear git history.
 
 ## How Publishing Works
 
-The CI workflow automatically detects when the version in
-`Cargo.toml` changes and:
+The CI workflow automatically detects when the version in `Cargo.toml`
+changes and:
 
 1. ✅ Runs all checks (format, clippy, build, test)
 2. 📝 Generates changelog from conventional commits
@@ -27,8 +27,8 @@ The CI workflow automatically detects when the version in
 5. 📦 Publishes to crates.io
 6. 📦 Builds and uploads binaries for all platforms
 
-**No manual tagging required!** Just bump the version in a
-PR and merge.
+**No manual tagging required!** Just bump the version in a PR and
+merge.
 
 ## Setup (One-time)
 
@@ -53,8 +53,8 @@ PR and merge.
 
 ### Step-by-Step Process (via Pull Request)
 
-Since the `main` branch is protected, all changes must go
-through pull requests:
+Since the `main` branch is protected, all changes must go through pull
+requests:
 
 ```bash
 # 1. Ensure you're on main and up to date
@@ -67,8 +67,7 @@ git checkout -b release/v0.1.0
 # 3. Update version in Cargo.toml
 vim Cargo.toml  # Change version = "0.0.1" to "0.1.0"
 
-# 4. Commit the version bump (using conventional
-#    commit format)
+# 4. Commit the version bump (using conventional commit format)
 git add Cargo.toml
 git commit -m "chore: bump version to 0.1.0"
 
@@ -94,8 +93,8 @@ gh pr create --title "chore: bump version to 0.1.0" \
 
 ### What Gets Published
 
-The changelog will include all commits since the last
-version with types:
+The changelog will include all commits since the last version with
+types:
 
 - ✅ **feat**: New features
 - ✅ **fix**: Bug fixes
@@ -115,8 +114,7 @@ Excluded from changelog:
 ## Conventional Commits
 
 All commits should follow the
-[Conventional Commits](https://www.conventionalcommits.org/)
-format:
+[Conventional Commits](https://www.conventionalcommits.org/) format:
 
 ```bash
 <type>(<scope>): <subject>
@@ -155,16 +153,15 @@ Use `!` after type and include `BREAKING CHANGE:` footer:
 ```bash
 feat!: change default output format
 
-BREAKING CHANGE: Default output format changed from
-plain text to JSON
+BREAKING CHANGE: Default output format changed from plain text to
+JSON
 ```
 
 ## Monitoring the Release
 
 After pushing your version bump:
 
-1. Go to:
-   https://github.com/agnos-ai/cargo-version-info/actions
+1. Go to: https://github.com/agnos-ai/cargo-version-info/actions
 2. Watch the "CI/CD" workflow
 3. The "Release" job will show:
    - Changelog generation
@@ -194,27 +191,24 @@ git pull --tags
 ## Version Bump Types
 
 - **Patch** (0.1.0 → 0.1.1): Bug fixes, minor improvements
-- **Minor** (0.1.0 → 0.2.0): New features, backwards
-  compatible
+- **Minor** (0.1.0 → 0.2.0): New features, backwards compatible
 - **Major** (0.1.0 → 1.0.0): Breaking changes
 
 ## Troubleshooting
 
 ### "Version hasn't changed"
 
-The workflow only runs when the version in `Cargo.toml`
-differs from the latest git tag.
+The workflow only runs when the version in `Cargo.toml` differs from
+the latest git tag.
 
-**Solution**: Make sure you actually bumped the version
-number.
+**Solution**: Make sure you actually bumped the version number.
 
 ### "Changelog is empty"
 
-If no conventional commits exist since the last tag, the
-changelog will be minimal.
+If no conventional commits exist since the last tag, the changelog
+will be minimal.
 
-**Solution**: Use conventional commit format for meaningful
-commits.
+**Solution**: Use conventional commit format for meaningful commits.
 
 ### "Tag already exists"
 
@@ -226,8 +220,8 @@ You can't publish the same version twice.
 
 The crates.io token is missing or invalid.
 
-**Solution**: Check that `CRATES_IO_TOKEN` secret is set
-correctly in GitHub settings.
+**Solution**: Check that `CRATES_IO_TOKEN` secret is set correctly in
+GitHub settings.
 
 ### "CI checks failed"
 

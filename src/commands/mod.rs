@@ -1,6 +1,6 @@
 //! Command implementations.
 
-mod badges;
+mod badge;
 mod build_version;
 mod changed;
 mod changelog;
@@ -19,9 +19,9 @@ mod tag;
 mod update_readme;
 
 // Re-export all command argument structs
-pub use badges::{
-    BadgesArgs,
-    badges,
+pub use badge::{
+    BadgeArgs,
+    badge,
 };
 pub use build_version::{
     BuildVersionArgs,
