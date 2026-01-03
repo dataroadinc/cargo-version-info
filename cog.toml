@@ -23,10 +23,11 @@ chore = { changelog_title = "Miscellaneous Chores", omit_from_changelog = true }
 revert = { changelog_title = "Reverts" }
 
 [bump_profiles.default]
-# Cocogitto automatically updates Cargo.toml version
-# pre_bump_hooks run AFTER version bump but BEFORE commit
+# Cocogitto calculates the new version but doesn't update Cargo.toml automatically
+# pre_bump_hooks run BEFORE the commit and tag are created
 pre_bump_hooks = [
+    "cargo set-version {{version}}",
     "cargo update --workspace",
-    "git add Cargo.lock"
+    "git add Cargo.toml Cargo.lock",
 ]
 post_bump_hooks = []
