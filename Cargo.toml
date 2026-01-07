@@ -74,7 +74,7 @@ toml = "=0.9.8"
 carlog = "0.1"
 console = "0.16.2"
 indicatif = "0.18.3"
-cargo-plugin-utils = { path = "../cargo-plugin-utils" }
+cargo-plugin-utils = "0.0.3"
 portable-pty = "0.9.0"
 
 [build-dependencies]

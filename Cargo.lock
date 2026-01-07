@@ -288,12 +288,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cargo-husky"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b02b629252fe8ef6460461409564e2c21d0c8e77e0944f3d189ff06c4e932ad"
-
-[[package]]
 name = "cargo-platform"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -305,7 +299,9 @@ dependencies = [
 
 [[package]]
 name = "cargo-plugin-utils"
-version = "0.0.1"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5cbf0e42b1a8f95d44274dce2c95aabc6e693a0043c03a3e773439d83ede81f8"
 dependencies = [
  "anyhow",
  "atty",
@@ -315,6 +311,7 @@ dependencies = [
  "gix",
  "indicatif",
  "portable-pty",
+ "sloughi",
  "tokio",
 ]
 
@@ -324,7 +321,6 @@ version = "0.0.3"
 dependencies = [
  "anyhow",
  "bstr",
- "cargo-husky",
  "cargo-plugin-utils",
  "cargo_metadata",
  "carlog",
@@ -339,6 +335,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sloughi",
  "tempfile",
  "tokio",
  "toml 0.9.8",
@@ -3210,6 +3207,12 @@ name = "slab"
 version = "0.4.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
+
+[[package]]
+name = "sloughi"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0569fee432a4d80dbdcb77b16df865536b49baa45b72fff3ee4b6ea11033bfd0"
 
 [[package]]
 name = "smallvec"
