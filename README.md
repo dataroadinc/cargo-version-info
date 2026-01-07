@@ -45,7 +45,7 @@ Calculate the next patch version from the latest GitHub release.
 cargo version-info next
 
 # Specify repository explicitly
-cargo version-info next --owner dataroad --repo dr-rs-ekg
+cargo version-info next --owner dataroadinc --repo my-project
 
 # Output as tag format
 cargo version-info next --format tag
@@ -89,7 +89,7 @@ Get the latest published GitHub release version.
 cargo version-info latest
 
 # Specify repository
-cargo version-info latest --owner dataroad --repo dr-rs-ekg
+cargo version-info latest --owner dataroadinc --repo my-project
 
 # Output as tag format
 cargo version-info latest --format tag
