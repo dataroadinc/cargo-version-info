@@ -81,11 +81,9 @@ portable-pty = "0.9.0"
 anyhow = "1.0.100"
 gix = { version = "0.77.0", default-features = false, features = ["revision"] }
 toml = "=0.9.8"
+sloughi = "0.3"
 
 [dev-dependencies]
-cargo-husky = { version = "1", default-features = false, features = [
-    "user-hooks",
-] }
 tempfile = "3.10"
 
 [package.metadata.binstall]
