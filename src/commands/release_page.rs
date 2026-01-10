@@ -38,6 +38,13 @@ pub struct ReleasePageArgs {
     #[arg(long)]
     pub range: Option<String>,
 
+    /// Version for this release (e.g., 0.1.0 or v0.1.0).
+    ///
+    /// This is used for the release page header. If not specified,
+    /// the version from Cargo.toml will be used instead.
+    #[arg(long)]
+    pub for_version: Option<String>,
+
     /// Output file path (default: stdout).
     #[arg(short, long)]
     pub output: Option<String>,
@@ -76,7 +83,18 @@ async fn release_page_async(args: ReleasePageArgs) -> Result<()> {
 
     // Section 1: Title and Badges
     logger.status("Generating", "badges");
-    writeln!(&mut output, "# {} v{}\n", package.name, package.version)?;
+    // Use for_version if provided, otherwise fall back to package version
+    let version_display = if let Some(ref version) = args.for_version {
+        // Normalize version to have v prefix for display
+        if version.starts_with('v') || version.starts_with('V') {
+            version.clone()
+        } else {
+            format!("v{}", version)
+        }
+    } else {
+        format!("v{}", package.version)
+    };
+    writeln!(&mut output, "# {} {}\n", package.name, version_display)?;
 
     // Add description if available
     if let Some(description) = &package.description {
@@ -173,7 +191,8 @@ fn generate_changelog(writer: &mut dyn Write, args: &ReleasePageArgs) -> Result<
     let changelog_args = crate::commands::ChangelogArgs {
         at: args.since_tag.clone(),
         range: args.range.clone(),
-        output: None, // We handle output ourselves
+        for_version: None, // Not used in release page context
+        output: None,      // We handle output ourselves
         owner: args.owner.clone(),
         repo: args.repo.clone(),
     };

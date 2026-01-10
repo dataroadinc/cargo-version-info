@@ -6,8 +6,11 @@
 //! # Examples
 //!
 //! ```bash
-//! # Generate changelog since last tag
+//! # Generate changelog since latest version tag (automatically finds latest tag)
 //! cargo version-info changelog
+//!
+//! # Generate changelog for a specific version (uses version in header, auto-finds latest tag)
+//! cargo version-info changelog --for-version v0.1.0
 //!
 //! # Generate changelog for specific tag
 //! cargo version-info changelog --at v0.1.0
@@ -17,6 +20,9 @@
 //!
 //! # Output to file
 //! cargo version-info changelog --output CHANGELOG.md
+//!
+//! # Combined: version in header + output to file
+//! cargo version-info changelog --for-version v0.1.0 --output CHANGELOG.md
 //! ```
 
 use std::collections::HashMap;
@@ -33,6 +39,8 @@ use cargo_plugin_utils::common::get_owner_repo;
 use clap::Parser;
 use regex::Regex;
 
+use crate::version::parse_version;
+
 /// Arguments for the `changelog` command.
 #[derive(Parser, Debug)]
 pub struct ChangelogArgs {
@@ -43,6 +51,15 @@ pub struct ChangelogArgs {
     /// Generate changelog for a commit range (e.g., v0.1.0..v0.2.0).
     #[arg(long)]
     pub range: Option<String>,
+
+    /// Version to generate changelog for (e.g., 0.1.0 or v0.1.0).
+    ///
+    /// This is used for the changelog header and metadata. If not specified,
+    /// the changelog will not include version information in the header.
+    /// The command will still automatically find the latest git tag to
+    /// determine the commit range.
+    #[arg(long)]
+    pub for_version: Option<String>,
 
     /// Output file path (default: stdout).
     #[arg(short, long)]
@@ -229,13 +246,14 @@ pub fn generate_changelog_to_writer(
 
         (Some(tag_oid), head_oid)
     } else {
-        // Default: since last tag
-        // Find a tag by iterating through references
-        let mut latest_tag_oid: Option<gix::Id> = None;
+        // Default: since last version tag
+        // Find the latest version tag by collecting all version tags, parsing them,
+        // sorting by version, and taking the latest one
+        let mut version_tags: Vec<(gix::Id, String, (u32, u32, u32))> = Vec::new();
 
         if let Ok(refs) = git_repo.references() {
-            for reference in refs.all()? {
-                let Ok(reference) = reference else {
+            for reference_result in refs.all()? {
+                let Ok(reference) = reference_result else {
                     continue;
                 };
                 let name_str = reference.name().as_bstr().to_string();
@@ -249,11 +267,23 @@ pub fn generate_changelog_to_writer(
                 let Some(oid) = spec.single() else {
                     continue;
                 };
-                // Store the first tag we find
-                latest_tag_oid = Some(oid);
-                break; // Found a tag, no need to continue
+
+                // Try to parse as semantic version
+                let version_str = name
+                    .strip_prefix('v')
+                    .or_else(|| name.strip_prefix('V'))
+                    .unwrap_or(name);
+                if let Ok((major, minor, patch)) = parse_version(version_str) {
+                    version_tags.push((oid, name.to_string(), (major, minor, patch)));
+                }
             }
         }
+
+        // Sort tags by semantic version (major, minor, patch)
+        version_tags.sort_by(|a, b| a.2.cmp(&b.2));
+
+        // Get the latest tag OID (if any)
+        let latest_tag_oid = version_tags.last().map(|(oid, _tag_name, _version)| *oid);
 
         // Get HEAD for end
         let head = git_repo.head().context("Failed to read HEAD")?;
@@ -334,8 +364,16 @@ pub fn generate_changelog_to_writer(
     // Generate markdown
     let mut output = String::new();
 
-    // Header
-    if let Some(tag) = &args.at {
+    // Header - prioritize for_version, then at, then generic
+    if let Some(version) = &args.for_version {
+        // Normalize version to have v prefix for display
+        let version_display = if version.starts_with('v') || version.starts_with('V') {
+            version.clone()
+        } else {
+            format!("v{}", version)
+        };
+        output.push_str(&format!("# Changelog - {}\n\n", version_display));
+    } else if let Some(tag) = &args.at {
         output.push_str(&format!("# Changelog - {}\n\n", tag));
     } else {
         output.push_str("# Changelog\n\n");
