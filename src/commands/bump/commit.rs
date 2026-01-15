@@ -205,6 +205,39 @@ pub fn commit_version_changes(
     old_version: &str,
     new_version: &str,
 ) -> Result<()> {
+    // Call the multi-file version with no additional files
+    commit_version_changes_with_files(manifest_path, old_version, new_version, &[])
+}
+
+/// Commit version-related changes along with additional files.
+///
+/// This function combines the selective staging of Cargo.toml (only version
+/// changes) with full content commits for additional files like Cargo.lock
+/// and README.md.
+///
+/// # Arguments
+///
+/// * `manifest_path` - Path to the Cargo.toml file
+/// * `old_version` - The previous version
+/// * `new_version` - The new version
+/// * `additional_files` - List of (path, content) pairs for other files to
+///   include
+///
+/// # Selective Staging
+///
+/// For Cargo.toml, only version-related changes are committed, not other
+/// uncommitted modifications. This is done by:
+/// 1. Reading HEAD's version of Cargo.toml
+/// 2. Applying only version-related hunks from the working directory
+/// 3. Creating a blob with this patched content
+///
+/// For additional files (Cargo.lock, README.md), the full content is committed.
+pub fn commit_version_changes_with_files(
+    manifest_path: &Path,
+    old_version: &str,
+    new_version: &str,
+    additional_files: &[(std::path::PathBuf, String)],
+) -> Result<()> {
     // Discover git repository by walking up from the manifest's directory
     let repo = gix::discover(manifest_path.parent().unwrap_or_else(|| Path::new(".")))
         .context("Not in a git repository")?;
@@ -249,7 +282,7 @@ pub fn commit_version_changes(
     let has_other_changes =
         diff::has_non_version_changes(&head_content, &current_content, old_version, new_version);
 
-    // Create the content to stage
+    // Create the content to stage for Cargo.toml
     let staged_content = if has_other_changes {
         // File has non-version changes - apply only version hunks
         eprintln!("⚠️  Using hunk-level staging: only version lines will be committed.");
@@ -261,12 +294,25 @@ pub fn commit_version_changes(
         current_content.clone()
     };
 
-    // Create blob for the staged content
-    let blob_id = write_blob(&repo, &staged_content)?;
+    // Create blob for Cargo.toml
+    let cargo_toml_blob_id = write_blob(&repo, &staged_content)?;
 
-    // Build tree by modifying HEAD's tree (not creating minimal tree!)
-    // We need to preserve all other files in the repository
-    let tree_id = update_tree_with_file(&repo, &head_tree, relative_path, blob_id)?;
+    // Build list of file updates for the tree
+    let mut file_updates: Vec<(std::path::PathBuf, gix::ObjectId)> = Vec::new();
+    file_updates.push((relative_path.to_path_buf(), cargo_toml_blob_id));
+
+    // Add additional files (Cargo.lock, README.md, etc.)
+    for (path, content) in additional_files {
+        let file_relative_path = path
+            .strip_prefix(repo_path)
+            .or_else(|_| path.strip_prefix("."))
+            .unwrap_or(path);
+        let blob_id = write_blob(&repo, content)?;
+        file_updates.push((file_relative_path.to_path_buf(), blob_id));
+    }
+
+    // Build tree with all updates
+    let tree_id = update_tree_with_files(&repo, &head_tree, &file_updates)?;
 
     // Create the commit
     let commit_id = create_commit(&repo, &tree_id, head_commit_id, old_version, new_version)?;
@@ -369,64 +415,41 @@ fn write_blob(repo: &gix::Repository, content: &str) -> Result<gix::ObjectId> {
     Ok(blob_id)
 }
 
-/// Update a tree by replacing a single file's blob.
+/// Update a tree by replacing multiple files' blobs.
 ///
-/// **CRITICAL**: This function takes HEAD's tree and creates a NEW tree with
-/// only ONE file changed. All other files remain exactly as they were in HEAD.
+/// Takes HEAD's tree and creates a NEW tree with the specified files changed.
+/// All other files remain exactly as they were in HEAD.
 ///
-/// # Why This Is Critical
-///
-/// A git commit represents the FULL state of the repository at a point in time.
-/// If we create a tree with only Cargo.toml, the commit will DELETE all other
-/// files!
-///
-/// ## Wrong Approach (What We Were Doing)
-/// ```text
-/// HEAD tree: [Cargo.toml, src/*, docs/*, .github/*]
-/// New tree:  [Cargo.toml]
-/// Commit:    Deletes src/, docs/, .github/ ❌
-/// ```
-///
-/// ## Correct Approach (What We Do Now)
-/// ```text
-/// HEAD tree:    [Cargo.toml(v0.1.0), src/*, docs/*, .github/*]
-/// Updated tree: [Cargo.toml(v0.2.0), src/*, docs/*, .github/*]
-/// Commit:       Only Cargo.toml version changed ✓
-/// ```
-///
-/// # Implementation Strategy
-///
-/// Since we're using a simplified tree builder (single-level), we need to:
-/// 1. Recreate HEAD's tree structure
-/// 2. Replace only the target file's blob
-/// 3. Keep all other entries unchanged
-///
-/// For a full implementation with recursive trees, we'd:
-/// 1. Parse the path to identify which subtree to modify
-/// 2. Clone all trees from HEAD to the target file's parent
-/// 3. Replace the blob in the deepest subtree
-/// 4. Rebuild parent trees up to root
+/// **CRITICAL**: A git commit represents the FULL state of the repository.
+/// If we create a tree with only modified files, the commit would DELETE
+/// all other files! This function preserves all existing files.
 ///
 /// # Arguments
 ///
 /// * `repo` - The git repository
 /// * `head_tree` - The tree from HEAD commit
-/// * `file_path` - Path to the file to update (relative to repo root)
-/// * `new_blob_id` - The new blob ID for the file
+/// * `file_updates` - List of (file_path, new_blob_id) pairs
 ///
 /// # Returns
 ///
-/// Returns the object ID of the new tree with the file updated.
-fn update_tree_with_file(
+/// Returns the object ID of the new tree with the files updated.
+fn update_tree_with_files(
     repo: &gix::Repository,
     head_tree: &gix::Tree,
-    file_path: &Path,
-    new_blob_id: gix::ObjectId,
+    file_updates: &[(std::path::PathBuf, gix::ObjectId)],
 ) -> Result<gix::ObjectId> {
+    use std::collections::HashMap;
+
     use gix::objs::{
         Tree,
         tree,
     };
+
+    // Build a map for quick lookup of file updates
+    let update_map: HashMap<&[u8], &gix::ObjectId> = file_updates
+        .iter()
+        .map(|(path, blob_id)| (path.as_os_str().as_encoded_bytes(), blob_id))
+        .collect();
 
     // Get all entries from HEAD's tree
     let mut tree_entries: Vec<tree::Entry> = Vec::new();
@@ -436,13 +459,13 @@ fn update_tree_with_file(
         let entry = entry.context("Failed to iterate tree entry")?;
         let entry_path = entry.filename();
 
-        // Check if this is the file we're updating
-        if file_path.as_os_str().as_encoded_bytes() == entry_path {
-            // This is the file we're updating - use the new blob
+        // Check if this file has an update
+        if let Some(new_blob_id) = update_map.get(entry_path.as_bytes()) {
+            // This file has an update - use the new blob
             tree_entries.push(tree::Entry {
                 mode: entry.mode(),
                 filename: entry_path.into(),
-                oid: new_blob_id,
+                oid: **new_blob_id,
             });
         } else {
             // Keep the entry unchanged from HEAD
@@ -455,12 +478,10 @@ fn update_tree_with_file(
     }
 
     // Sort entries using git's special sorting rules
-    // Git treats directories as if they have a trailing '/' for sorting purposes
     tree_entries.sort_by(|a, b| {
         use gix::objs::tree::EntryKind;
 
         let a_name = if matches!(a.mode.kind(), EntryKind::Tree) {
-            // Directory - append '/' for sorting
             let mut name = a.filename.to_vec();
             name.push(b'/');
             name
@@ -469,7 +490,6 @@ fn update_tree_with_file(
         };
 
         let b_name = if matches!(b.mode.kind(), EntryKind::Tree) {
-            // Directory - append '/' for sorting
             let mut name = b.filename.to_vec();
             name.push(b'/');
             name

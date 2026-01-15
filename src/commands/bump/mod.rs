@@ -115,6 +115,7 @@ pub mod args;
 pub mod commit;
 pub mod diff;
 pub mod index;
+pub mod readme_update;
 pub mod tree;
 pub mod version_update;
 
@@ -239,12 +240,15 @@ use crate::version::{
 /// - You're making multiple related changes
 /// - You prefer manual commit control
 pub fn bump(args: BumpArgs) -> Result<()> {
+    use std::path::PathBuf;
+
     let mut logger = cargo_plugin_utils::logger::Logger::new();
 
-    // Step 1: Get current version from Cargo.toml
+    // Step 1: Get current version and package info from Cargo.toml
     logger.status("Reading", "current version");
     let package = find_package(args.manifest_path.as_deref())?;
     let current_version = package.version.to_string();
+    let package_name = package.name.clone();
     logger.finish();
 
     // Step 2: Calculate target version based on command args
@@ -274,14 +278,90 @@ pub fn bump(args: BumpArgs) -> Result<()> {
     version_update::update_cargo_toml_version(manifest_path, &current_version, &target_version)?;
     logger.finish();
 
-    // Step 5: Commit changes (unless --no-commit)
+    // Get the directory containing Cargo.toml for other files
+    let manifest_dir = manifest_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+
+    // Step 5: Update Cargo.lock (unless --no-lock)
+    let cargo_lock_path = manifest_dir.join("Cargo.lock");
+    if !args.no_lock {
+        logger.status("Updating", "Cargo.lock");
+        let status = std::process::Command::new("cargo")
+            .args(["update", "--workspace"])
+            .current_dir(manifest_dir)
+            .status()
+            .context("Failed to run cargo update")?;
+
+        if !status.success() {
+            anyhow::bail!("cargo update --workspace failed");
+        }
+        logger.finish();
+    }
+
+    // Step 6: Update README.md (unless --no-readme)
+    let readme_path = manifest_dir.join("README.md");
+    let readme_update = if !args.no_readme {
+        logger.status("Checking", "README.md");
+        let result = readme_update::update_readme_file(
+            &readme_path,
+            &package_name,
+            &current_version,
+            &target_version,
+        )?;
+        logger.finish();
+
+        if let Some(ref update) = result
+            && update.modified
+        {
+            // Write the updated README
+            std::fs::write(&readme_path, &update.content)
+                .with_context(|| format!("Failed to write {}", readme_path.display()))?;
+            logger.print_message("  Updated version in README.md");
+        }
+        result
+    } else {
+        None
+    };
+
+    // Step 7: Commit changes (unless --no-commit)
     if !args.no_commit {
         logger.status("Committing", "version changes");
-        commit::commit_version_changes(manifest_path, &current_version, &target_version)?;
+
+        // Collect additional files to commit (besides Cargo.toml which is handled
+        // specially)
+        let mut additional_files: Vec<(PathBuf, String)> = Vec::new();
+
+        // Include Cargo.lock if it was updated
+        if !args.no_lock && cargo_lock_path.exists() {
+            let cargo_lock_content = std::fs::read_to_string(&cargo_lock_path)
+                .with_context(|| format!("Failed to read {}", cargo_lock_path.display()))?;
+            additional_files.push((cargo_lock_path, cargo_lock_content));
+        }
+
+        // Include README.md if it was modified
+        if let Some(update) = readme_update
+            && update.modified
+        {
+            additional_files.push((readme_path, update.content));
+        }
+
+        // Commit Cargo.toml (with selective staging) plus additional files
+        commit::commit_version_changes_with_files(
+            manifest_path,
+            &current_version,
+            &target_version,
+            &additional_files,
+        )?;
         logger.finish();
+
+        let file_count = additional_files.len() + 1; // +1 for Cargo.toml
         logger.print_message(&format!(
-            "✓ Committed version bump: {} -> {}",
-            current_version, target_version
+            "✓ Committed version bump: {} -> {} ({} file{})",
+            current_version,
+            target_version,
+            file_count,
+            if file_count == 1 { "" } else { "s" }
         ));
     } else {
         logger.print_message(&format!(

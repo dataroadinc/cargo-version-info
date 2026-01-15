@@ -84,6 +84,8 @@ version = "0.1.2"
         repo: None,
         github_token: None,
         no_commit: true, // Don't commit in tests
+        no_lock: true,
+        no_readme: true,
     };
 
     let result = bump(args);
@@ -116,6 +118,8 @@ version = "0.1.2"
         repo: None,
         github_token: None,
         no_commit: true,
+        no_lock: true,
+        no_readme: true,
     };
 
     let result = bump(args);
@@ -147,6 +151,8 @@ version = "0.1.2"
         repo: None,
         github_token: None,
         no_commit: true,
+        no_lock: true,
+        no_readme: true,
     };
 
     let result = bump(args);
@@ -178,6 +184,8 @@ version = "0.1.2"
         repo: None,
         github_token: None,
         no_commit: true,
+        no_lock: true,
+        no_readme: true,
     };
 
     let result = bump(args);
@@ -209,6 +217,8 @@ version = "0.1.2"
         repo: None,
         github_token: None,
         no_commit: true,
+        no_lock: true,
+        no_readme: true,
     };
 
     let result = bump(args);
@@ -455,6 +465,8 @@ edition = "2021"
         repo: None,
         github_token: None,
         no_commit: false, // DO commit
+        no_lock: true,
+        no_readme: true,
     };
 
     let result = bump(args);
@@ -546,6 +558,8 @@ license = "Apache-2.0"
         repo: None,
         github_token: None,
         no_commit: false,
+        no_lock: true,
+        no_readme: true,
     };
 
     let result = bump(args);
@@ -625,6 +639,8 @@ version = "0.5.0"
         repo: None,
         github_token: None,
         no_commit: false,
+        no_lock: true,
+        no_readme: true,
     };
 
     let result = bump(args);
@@ -746,6 +762,8 @@ version = "2.0.0"
         repo: None,
         github_token: None,
         no_commit: false,
+        no_lock: true,
+        no_readme: true,
     };
 
     let result = bump(args);
@@ -816,6 +834,8 @@ version = "1.0.0"
         repo: None,
         github_token: None,
         no_commit: false,
+        no_lock: true,
+        no_readme: true,
     };
 
     let result = bump(args);
@@ -932,6 +952,8 @@ version = "0.5.0"
         repo: None,
         github_token: None,
         no_commit: false,
+        no_lock: true,
+        no_readme: true,
     };
 
     let result = bump(args);

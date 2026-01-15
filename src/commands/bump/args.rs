@@ -145,4 +145,19 @@ pub struct BumpArgs {
     /// committing separately.
     #[arg(long)]
     pub no_commit: bool,
+
+    /// Skip updating Cargo.lock.
+    ///
+    /// By default, the bump command runs `cargo update --workspace` to update
+    /// Cargo.lock with the new version. Use this flag to skip this step.
+    #[arg(long)]
+    pub no_lock: bool,
+
+    /// Skip updating version references in README.md.
+    ///
+    /// By default, the bump command scans README.md for dependency version
+    /// references (e.g., `crate-name = "X.Y.Z"`) and updates them to the new
+    /// version. Use this flag to skip this step.
+    #[arg(long)]
+    pub no_readme: bool,
 }
