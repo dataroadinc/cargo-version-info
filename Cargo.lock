@@ -317,7 +317,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-version-info"
-version = "0.0.7"
+version = "0.0.8"
 dependencies = [
  "anyhow",
  "bstr",
