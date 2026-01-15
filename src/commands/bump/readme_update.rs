@@ -55,13 +55,7 @@ pub struct ReadmeUpdateResult {
 /// ```
 /// use cargo_version_info::commands::bump::readme_update::update_readme_content;
 ///
-/// let content = r#"
-/// Add to your Cargo.toml:
-/// ```toml
-/// [dependencies]
-/// my-crate = "0.1.0"
-/// ```
-/// "#;
+/// let content = r#"my-crate = "0.1.0""#;
 ///
 /// let result = update_readme_content(content, "my-crate", "0.1.0", "0.2.0");
 /// assert!(result.modified);
