@@ -320,7 +320,7 @@ pub fn generate_changelog_to_writer(
         }
 
         // Sort tags by semantic version (major, minor, patch)
-        version_tags.sort_by(|a, b| a.2.cmp(&b.2));
+        version_tags.sort_by_key(|a| a.2);
 
         // Get the latest tag's commit OID (if any)
         let latest_tag_oid = version_tags.last().map(|(oid, _tag_name, _version)| *oid);
