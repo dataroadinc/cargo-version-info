@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
 # Usage: commit-msg <path-to-commit-message>
+if [ -z "${1:-}" ]; then
+    echo "Usage: commit-msg <path-to-commit-message>" >&2
+    exit 1
+fi
 MSG_FILE="$1"
 
 # Require cocogitto to be installed

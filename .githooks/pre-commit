@@ -1,5 +1,4 @@
 #!/bin/sh
-set -e
 
 # Check for nightly toolchain
 if ! rustup run nightly rustc --version > /dev/null 2>&1; then

@@ -1,22 +1,31 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
 # Remove Co-Authored-By lines from commit message
 # These are often added by AI tools but we don't want them in our history
-COMMIT_MSG=$(git log -1 --pretty=format:"%B")
+COMMIT_MSG=$(git log -1 --pretty=format:"%B") || {
+    echo "ERROR: Failed to read commit message" >&2
+    exit 1
+}
+
 if echo "$COMMIT_MSG" | grep -qi "^Co-Authored-By:"; then
     echo "=== post-commit: removing Co-Authored-By lines ===" >&2
     # Filter out Co-Authored-By lines (case-insensitive)
     CLEAN_MSG=$(echo "$COMMIT_MSG" | grep -vi "^Co-Authored-By:" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')
     # Amend the commit with cleaned message (will re-sign automatically)
-    git commit --amend --no-verify -m "$CLEAN_MSG"
+    if ! git commit --amend --no-verify -m "$CLEAN_MSG"; then
+        echo "ERROR: Failed to amend commit to remove Co-Authored-By lines" >&2
+        exit 1
+    fi
     echo "✓ Removed Co-Authored-By lines" >&2
 fi
 
 # Verify that the commit was actually signed
 echo "=== post-commit: verifying commit signature ===" >&2
 
-COMMIT_HASH=$(git rev-parse HEAD)
+COMMIT_HASH=$(git rev-parse HEAD) || {
+    echo "ERROR: Failed to get HEAD commit hash" >&2
+    exit 1
+}
 SIG_STATUS=$(git show --pretty=format:"%G?" --no-patch "$COMMIT_HASH" 2>/dev/null || echo "N")
 
 case "$SIG_STATUS" in
