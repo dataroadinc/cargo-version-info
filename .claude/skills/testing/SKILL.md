@@ -76,13 +76,13 @@ cargo check
 
 ## Git Hooks (Automatic Checks)
 
-Git hooks in `.githooks/` run automatically on commit via Sloughi:
+Git hooks in `.githooks/` run automatically on commit via Rhusky:
 
 - **pre-commit**: Runs fmt and clippy on Rust files
 - **commit-msg**: Validates conventional commit format with scope
 - **post-commit**: Verifies commit signature
 
-If hooks aren't active, run `cargo build` to trigger Sloughi
+If hooks aren't active, run `cargo build` to trigger Rhusky
 installation. Hooks are skipped in CI environments.
 
 ## Common Issues

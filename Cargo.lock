@@ -333,10 +333,10 @@ dependencies = [
  "portable-pty",
  "regex",
  "reqwest",
+ "rhusky",
  "serde",
  "serde_json",
  "similar",
- "sloughi",
  "smallvec",
  "tempfile",
  "tokio",
@@ -2977,6 +2977,12 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
 ]
+
+[[package]]
+name = "rhusky"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e851b447b4377f04ecbabc9f969459fd7869f2dc8c3c93f1d58aed47ab2e2bbf"
 
 [[package]]
 name = "ring"

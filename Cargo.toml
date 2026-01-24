@@ -95,7 +95,7 @@ gix = { version = "0.77.0", default-features = false, features = [
     "blob-diff",
 ] }
 toml = "0.9"
-sloughi = "0.3"
+rhusky = "0.0.1"
 
 [dev-dependencies]
 tempfile = "3.24"

@@ -183,10 +183,10 @@ Version is computed dynamically via `build.rs`:
 - Never execute `git push` - user must push manually
 - Prefer `git rebase` over `git merge` for linear history
 
-### Git hooks (Sloughi)
+### Git hooks (Rhusky)
 
-Git hooks in `.githooks/` are auto-installed via [Sloughi](https://github.com/01walid/sloughi)
-during `cargo build`. Sloughi sets Git's `core.hooksPath` to point
+Git hooks in `.githooks/` are auto-installed via [Rhusky](https://github.com/dataroadinc/rhusky)
+during `cargo build`. Rhusky sets Git's `core.hooksPath` to point
 to `.githooks/`. Installation is skipped in CI environments.
 
 The hooks enforce:
@@ -197,7 +197,7 @@ The hooks enforce:
   scope using Cocogitto (`cog verify`)
 - **post-commit**: Verifies commit is signed
 
-If hooks aren't active, run `cargo build` to trigger Sloughi
+If hooks aren't active, run `cargo build` to trigger Rhusky
 installation.
 
 ## Claude Code skills

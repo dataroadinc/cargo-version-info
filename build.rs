@@ -7,7 +7,7 @@
 //! 3. Cargo.toml version + git SHA
 //! 4. Git SHA fallback: 0.0.0-dev-<short-sha>
 //!
-//! Also installs git hooks via Sloughi to enforce code quality.
+//! Also installs git hooks via Rhusky to enforce code quality.
 //!
 //! Note: GitHub API fallback is skipped in build.rs to avoid heavy
 //! dependencies.
@@ -18,14 +18,14 @@ use std::{
     fs,
 };
 
-use sloughi::Sloughi;
+use rhusky::Rhusky;
 
 fn main() {
-    // Install git hooks via Sloughi (skipped in CI)
-    let _ = Sloughi::new()
-        .custom_path(".githooks")
-        .ignore_env("CI")
-        .ignore_env("GITHUB_ACTIONS")
+    // Install git hooks via Rhusky (skipped in CI)
+    let _ = Rhusky::new()
+        .hooks_dir(".githooks")
+        .skip_in_env("GITHUB_ACTIONS")
+        .with_default_hooks()
         .install();
 
     let version = compute_version_string(".").unwrap_or_else(|e| {
