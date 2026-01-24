@@ -1,5 +1,4 @@
 #!/bin/sh
-# shellcheck disable=SC1091
 . "$(dirname "$0")/_/sloughi.sh"
 
 # Check if any Rust files are being committed
@@ -13,9 +12,10 @@ fi
 echo "Rust files detected in commit, running checks..."
 echo ""
 
-# Run cargo fmt check before committing (using nightly for rustfmt.toml features)
-echo "Running cargo +nightly fmt --check..."
-cargo +nightly fmt --check
+# Run cargo fmt check on changed files only
+echo "Running cargo +nightly fmt --check on changed files..."
+# shellcheck disable=SC2086
+cargo +nightly fmt -- --check $RUST_FILES
 
 if [ $? -ne 0 ]; then
     echo ""
@@ -26,8 +26,7 @@ fi
 
 echo "✅ Code formatting check passed"
 
-# Run clippy on the affected package
-# Note: Clippy needs to check the whole crate for proper analysis
+# Run clippy on whole crate (clippy doesn't support individual files)
 echo ""
 echo "Running cargo +nightly clippy..."
 cargo +nightly clippy --all-targets --all-features -- -D warnings -W missing-docs

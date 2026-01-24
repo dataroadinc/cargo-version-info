@@ -18,7 +18,7 @@ fi
 
 # Enforce: scope is mandatory, e.g. feat(api): ...
 # Accepts letters for type, and scope with [a-z0-9./-]
-if ! grep -E -q '^[a-z]+\([a-z0-9][a-z0-9./-]*\)(!:)?\: ' "$MSG_FILE"; then
+if ! grep -E -q '^[a-z]+\([a-z0-9][a-z0-9./-]*\)!?\: ' "$MSG_FILE"; then
   echo "Commit message must include a scope, e.g.: feat(backend): add endpoint" >&2
   exit 1
 fi
