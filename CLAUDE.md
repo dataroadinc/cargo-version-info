@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when
 working with code in this repository.
 
-## Related Projects
+## Related projects
 
 This crate is part of a family of Rust projects that share the same
 coding standards, tooling, and workflows:
@@ -25,7 +25,7 @@ markdownlint, cocogitto, and git hooks. When making changes to
 tooling or workflow conventions, apply them consistently across
 all repositories.
 
-## Project Overview
+## Project overview
 
 `cargo-version-info` is a Cargo subcommand providing unified version
 management across CI/CD, Rust code, and shell scripts. It replaces
@@ -33,18 +33,24 @@ scattered version logic in workflows, bash scripts, and build.rs files.
 
 Key commands:
 
-- `next` - Calculate next patch version from latest GitHub release
-- `current` - Get current version from Cargo.toml
-- `latest` - Get latest published GitHub release version
-- `dev` - Generate dev version from current git SHA
-- `bump` - Bump version in Cargo.toml and commit changes
-- `changed` - Check if version changed since last git tag
-- `changelog` - Generate changelog from conventional commits
-- `release-page` - Generate complete release page with badges
+| Command        | Description                                | Status   |
+| -------------- | ------------------------------------------ | -------- |
+| `next`         | Calculate next patch version from release  | stable   |
+| `current`      | Get current version from Cargo.toml        | stable   |
+| `latest`       | Get latest published GitHub release        | stable   |
+| `dev`          | Generate dev version from git SHA          | stable   |
+| `bump`         | Bump version in Cargo.toml and commit      | stable   |
+| `changed`      | Check if version changed since last tag    | stable   |
+| `release-page` | Generate release page with badges          | stable   |
+| `changelog`    | Generate changelog from commits            | unstable |
+| `badge`        | Generate quality metric badges             | unstable |
+| `pr-log`       | Generate PR log from merged PRs            | unstable |
+
+Note: Commands marked unstable are experimental and work poorly.
 
 Published to crates.io at https://crates.io/crates/cargo-version-info
 
-## Build Commands
+## Build commands
 
 ```bash
 # Build
@@ -57,7 +63,7 @@ cargo run -- version-info <command> [OPTIONS]
 cargo version-info <command> [OPTIONS]
 ```
 
-## Testing and Linting
+## Testing and linting
 
 ```bash
 # Run tests (single-threaded required)
@@ -76,7 +82,7 @@ cargo +nightly fmt --all
 cargo +nightly clippy --all-targets --all-features -- -D warnings -W missing-docs
 ```
 
-## Code Style
+## Code style
 
 - **Rust Edition**: 2024, MSRV 1.92.0
 - **Formatting**: Uses nightly rustfmt with vertical imports grouped
@@ -88,30 +94,33 @@ cargo +nightly clippy --all-targets --all-features -- -D warnings -W missing-doc
 
 ## Architecture
 
-### Source Structure
+### Source structure
 
 - `src/main.rs` - CLI entry point with clap argument parsing
-- `src/lib.rs` - Library definition
+- `src/lib.rs` - Library exports
 - `src/version.rs` - Core version parsing, formatting, comparison
 - `src/github.rs` - GitHub API integration using octocrab
-- `src/commands/` - 21 command implementations, each with its own
+- `src/commands/` - 18 command implementations, each with its own
   Args struct
 
-### Bump Command Architecture
+### Bump command architecture
 
-The `bump` subcommand (`src/commands/bump/`) is the most sophisticated:
+The `bump` subcommand (`src/commands/bump/`) is the most complex:
 
 - `mod.rs` - Main orchestration
+- `args.rs` - CLI argument definitions
 - `version_update.rs` - TOML manipulation with toml_edit
+- `readme_update.rs` - README badge version updates
 - `commit.rs` - Git commit orchestration
 - `diff.rs` - Diff generation and hunk-level filtering
 - `index.rs` - Git index operations using gix
 - `tree.rs` - Git tree building
+- `tests.rs` - Unit tests
 
 Key feature: Hunk-level selective staging commits only version-related
 changes, leaving other uncommitted work untouched.
 
-### Key Dependencies
+### Key dependencies
 
 - `clap` - CLI argument parsing with derive macros
 - `octocrab` - GitHub API client (with rustls)
@@ -119,8 +128,18 @@ changes, leaving other uncommitted work untouched.
 - `toml_edit` - Preserves TOML formatting during edits
 - `tokio` - Async runtime for GitHub API calls
 - `cargo_plugin_utils` - Shared utilities for cargo plugins
+- `dotenvage` - Environment variable loading (supports encrypted .env)
 
-## Version Management
+## Environment variables
+
+- `GITHUB_TOKEN` - GitHub personal access token for API access
+  (optional, falls back to `gh` CLI)
+- `GITHUB_REPOSITORY` - Repository in `owner/repo` format
+  (auto-detected from git remote if not set)
+- `BUILD_VERSION` - Override version computation (used in CI)
+- `CARGO_PKG_VERSION_OVERRIDE` - Legacy version override
+
+## Version management
 
 Use `cargo version-info bump` for version management. This command
 updates Cargo.toml and creates a commit, but does NOT create tags
@@ -139,15 +158,19 @@ with CI's tag creation workflow.
 
 1. Create PR with version bump commit
 2. Merge PR to main
-3. CI detects version change, creates tag, publishes release
+3. CI detects version change, creates tag
+4. CI generates changelog from conventional commits (via Cocogitto)
+5. CI creates GitHub Release with changelog as release body
+6. CI publishes to crates.io and uploads platform binaries
 
-### Build Version Priority
+### Build version priority
 
 Version is computed dynamically via `build.rs`:
 
 1. `BUILD_VERSION` env var (CI)
-2. Cargo.toml version + git SHA
-3. Fallback: `0.0.0-dev-<short-sha>`
+2. `CARGO_PKG_VERSION_OVERRIDE` env var (legacy)
+3. Cargo.toml version + git SHA
+4. Fallback: `0.0.0-dev-<short-sha>`
 
 ## Git workflow
 
@@ -160,8 +183,35 @@ Version is computed dynamically via `build.rs`:
 - Never execute `git push` - user must push manually
 - Prefer `git rebase` over `git merge` for linear history
 
-Git hooks in `.githooks/` are auto-installed via `sloughi` during
-build.
+### Git hooks (Sloughi)
+
+Git hooks in `.githooks/` are auto-installed via [Sloughi](https://github.com/01walid/sloughi)
+during `cargo build`. Sloughi sets Git's `core.hooksPath` to point
+to `.githooks/`. Installation is skipped in CI environments.
+
+The hooks enforce:
+
+- **pre-commit**: Runs `cargo +nightly fmt --check` and
+  `cargo +nightly clippy` on Rust files
+- **commit-msg**: Verifies conventional commit format with mandatory
+  scope using Cocogitto (`cog verify`)
+- **post-commit**: Verifies commit is signed
+
+If hooks aren't active, run `cargo build` to trigger Sloughi
+installation.
+
+## Claude Code skills
+
+Skills are defined in `.claude/skills/` and can be invoked with
+`/skill-name`:
+
+- `/commit` - Create commits following Angular Conventional Commits
+  format with proper scope naming
+- `/release-prep` - Prepare a release including version bump,
+  testing, and PR creation
+- `/version-bump` - Bump version in Cargo.toml using
+  `cargo version-info bump` command
+- `/testing` - Run tests, linting, and formatting checks
 
 ## Markdown formatting
 
