@@ -2980,9 +2980,9 @@ dependencies = [
 
 [[package]]
 name = "rhusky"
-version = "0.0.1"
+version = "0.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e851b447b4377f04ecbabc9f969459fd7869f2dc8c3c93f1d58aed47ab2e2bbf"
+checksum = "d3b2a92af8979b16329f2109d07a674c2f1b79c5e8c5c905740d792962051a22"
 
 [[package]]
 name = "ring"
