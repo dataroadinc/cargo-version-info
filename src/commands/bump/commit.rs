@@ -524,9 +524,17 @@ fn update_tree_with_files(
 /// parent <parent-sha1>
 /// author Name <email> timestamp timezone
 /// committer Name <email> timestamp timezone
+/// gpgsig -----BEGIN SSH SIGNATURE-----
+///  <signature lines>
+///  -----END SSH SIGNATURE-----
 ///
 /// Commit message goes here
 /// ```
+///
+/// # Signing
+///
+/// If signing is configured via git config (`commit.gpgsign = true`), the
+/// commit will be signed using the configured method (SSH or GPG).
 ///
 /// # Arguments
 ///
@@ -546,6 +554,8 @@ fn create_commit(
     old_version: &str,
     new_version: &str,
 ) -> Result<gix::ObjectId> {
+    use super::signing;
+
     // Create commit message following conventional commits format
     let commit_message = format!("chore(version): bump {} -> {}", old_version, new_version);
 
@@ -557,6 +567,34 @@ fn create_commit(
     // We only have one parent (the current HEAD)
     let parents: SmallVec<[gix::ObjectId; 1]> = SmallVec::from_iter([parent_id.detach()]);
 
+    // Check if signing is configured
+    let signing_config = signing::read_signing_config(repo);
+
+    // Build extra headers for signature (if signing is enabled)
+    let extra_headers = if signing_config.enabled {
+        // Build the commit payload that will be signed
+        let payload =
+            signing::build_commit_payload(tree_id, parent_id, &author, &committer, &commit_message);
+
+        // Sign the payload
+        match signing::sign_commit_payload(&signing_config, &payload) {
+            Ok(Some(signature)) => {
+                // Add signature as gpgsig header
+                vec![("gpgsig".into(), signature.into())]
+            }
+            Ok(None) => {
+                // Signing not configured (shouldn't happen since we checked enabled)
+                vec![]
+            }
+            Err(err) => {
+                // Signing failed - this is an error, not a warning
+                return Err(err.context("Failed to sign commit"));
+            }
+        }
+    } else {
+        vec![]
+    };
+
     // Write the commit object to the object database
     let commit_id = repo
         .write_object(gix::objs::Commit {
@@ -566,7 +604,7 @@ fn create_commit(
             committer,
             message: commit_message.into(),
             encoding: None,
-            extra_headers: vec![],
+            extra_headers,
         })
         .context("Failed to write commit object")?
         .detach();

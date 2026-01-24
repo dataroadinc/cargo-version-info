@@ -48,6 +48,12 @@ fn init_test_git_repo(dir: &std::path::Path) {
         .current_dir(dir)
         .output()
         .unwrap();
+    // Disable commit signing in tests to avoid dependency on SSH keys
+    std::process::Command::new("git")
+        .args(["config", "commit.gpgsign", "false"])
+        .current_dir(dir)
+        .output()
+        .unwrap();
     std::process::Command::new("git")
         .args(["add", "Cargo.toml"])
         .current_dir(dir)
@@ -419,10 +425,11 @@ fn create_test_git_repo_with_gix(dir: &std::path::Path, initial_content: &str) -
         .expect("Failed to commit HEAD transaction");
 
     // Set user.name and user.email in repo config for bump command
+    // Also disable commit signing to avoid dependency on SSH keys in tests
     let config_path = repo.path().join("config");
     let config_content = std::fs::read_to_string(&config_path).unwrap_or_else(|_| String::new());
     let new_config = format!(
-        "{}\n[user]\n\tname = Test User\n\temail = test@example.com\n",
+        "{}\n[user]\n\tname = Test User\n\temail = test@example.com\n[commit]\n\tgpgsign = false\n",
         config_content
     );
     std::fs::write(&config_path, new_config).expect("Failed to write config");

@@ -116,6 +116,7 @@ pub mod commit;
 pub mod diff;
 pub mod index;
 pub mod readme_update;
+pub mod signing;
 pub mod tree;
 pub mod version_update;
 
