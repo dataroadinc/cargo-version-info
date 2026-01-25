@@ -320,6 +320,12 @@ pub fn commit_version_changes_with_files(
     // Update HEAD to point to the new commit
     update_head(&repo, commit_id)?;
 
+    // Reset the index to match HEAD
+    // This is necessary because we created the commit via direct tree manipulation,
+    // bypassing the index. Without this, any previously staged changes would remain
+    // in the index, causing confusing `git status` output.
+    reset_index_to_head(&repo)?;
+
     Ok(())
 }
 
@@ -650,6 +656,52 @@ fn update_head(repo: &gix::Repository, commit_id: gix::ObjectId) -> Result<()> {
     head_ref
         .set_target_id(commit_id, "bump version")
         .context("Failed to update HEAD reference")?;
+
+    Ok(())
+}
+
+/// Reset the git index to match HEAD.
+///
+/// This is necessary after creating a commit via direct tree manipulation
+/// (bypassing the index). Without this reset, any previously staged changes
+/// would remain in the index, causing confusing `git status` output showing
+/// staged changes that were already committed.
+///
+/// # How It Works
+///
+/// We read the tree from HEAD and write it to the index file. This is
+/// equivalent to `git reset HEAD` (soft reset of the index only).
+///
+/// # Arguments
+///
+/// * `repo` - The git repository
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - HEAD cannot be read
+/// - The tree cannot be accessed
+/// - The index file cannot be written
+fn reset_index_to_head(repo: &gix::Repository) -> Result<()> {
+    // Get HEAD commit and its tree
+    let mut head = repo.head().context("Failed to read HEAD")?;
+    let head_commit = head
+        .peel_to_commit()
+        .context("Failed to peel HEAD to commit")?;
+    let head_tree = head_commit.tree().context("Failed to get HEAD tree")?;
+
+    // Create a new index from the tree
+    // Use default path validation options (allows most paths)
+    let validate_opts = gix::validate::path::component::Options::default();
+    let state = gix::index::State::from_tree(&head_tree.id, &repo.objects, validate_opts)
+        .context("Failed to create index state from tree")?;
+
+    let mut index = gix::index::File::from_state(state, repo.index_path());
+
+    // Write the index to disk
+    index
+        .write(gix::index::write::Options::default())
+        .context("Failed to write index")?;
 
     Ok(())
 }

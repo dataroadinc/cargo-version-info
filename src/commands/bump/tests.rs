@@ -1028,3 +1028,92 @@ version = "0.5.0"
         "Cargo.toml version should be bumped (minor: 0.5.0 -> 0.6.0)"
     );
 }
+
+/// Test that the git index is reset after a bump commit.
+///
+/// This test verifies that after the bump command creates a commit, the git
+/// index matches HEAD and there are no spurious staged changes. This is a
+/// regression test for a bug where the index was left with stale staged
+/// changes after bump because the commit was created via direct tree
+/// manipulation bypassing the index.
+#[test]
+#[serial_test::serial]
+fn test_bump_resets_index_after_commit() {
+    let cargo_content = r#"
+[package]
+name = "test-project"
+version = "0.1.0"
+edition = "2021"
+"#;
+
+    // Create a test cargo project
+    let dir = create_temp_cargo_project(cargo_content);
+    let manifest_path = dir.path().join("Cargo.toml");
+
+    // Initialize git repo and create initial commit
+    init_test_git_repo(dir.path());
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    // Create and stage an unrelated file change to simulate pre-existing staged
+    // changes This is the scenario that caused the bug: someone had staged
+    // changes, then ran bump, and the index was left in a confused state
+    let readme_path = dir.path().join("README.md");
+    std::fs::write(&readme_path, "# Test\n").unwrap();
+    std::process::Command::new("git")
+        .args(["add", "README.md"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    // Perform the bump
+    let args = BumpArgs {
+        manifest_path: Some(manifest_path.clone()),
+        version: None,
+        auto: false,
+        major: false,
+        minor: false,
+        patch: true,
+        owner: None,
+        repo: None,
+        github_token: None,
+        no_commit: false,
+        no_lock: true,
+        no_readme: true,
+    };
+    bump(args).expect("Bump should succeed");
+
+    // Verify there are no staged changes (index matches HEAD)
+    // This is the key assertion - previously the index would have stale staged
+    // changes
+    let diff_index_output = std::process::Command::new("git")
+        .args(["diff", "--cached", "--quiet"])
+        .current_dir(dir.path())
+        .output()
+        .expect("Failed to run git diff --cached");
+
+    assert!(
+        diff_index_output.status.success(),
+        "Index should match HEAD (no staged changes)"
+    );
+
+    // Also check there are no modified (unstaged) tracked files
+    let diff_output = std::process::Command::new("git")
+        .args(["diff", "--quiet"])
+        .current_dir(dir.path())
+        .output()
+        .expect("Failed to run git diff");
+
+    assert!(
+        diff_output.status.success(),
+        "Working tree should match HEAD (no unstaged changes to tracked files)"
+    );
+}
