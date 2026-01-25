@@ -151,6 +151,10 @@ cargo version-info bump --minor   # 0.1.0 -> 0.2.0
 cargo version-info bump --major   # 1.0.0 -> 2.0.0
 ```
 
+The bump command uses pure Rust for all git operations (no git CLI
+required), including SSH commit signing via ssh-agent. See README.md
+for details.
+
 **Do NOT use `cog bump`** - it creates local tags which conflict
 with CI's tag creation workflow.
 

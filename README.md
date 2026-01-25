@@ -132,6 +132,69 @@ cargo version-info tag 0.1.2 --format json
 
 **Output:** `v0.1.2`
 
+### `cargo version-info bump`
+
+Bump the version in `Cargo.toml` and create a commit.
+
+```bash
+# Bump patch version (0.1.0 -> 0.1.1)
+cargo version-info bump --patch
+
+# Bump minor version (0.1.0 -> 0.2.0)
+cargo version-info bump --minor
+
+# Bump major version (0.1.0 -> 1.0.0)
+cargo version-info bump --major
+
+# Set specific version
+cargo version-info bump --version 2.0.0
+
+# Update version without committing
+cargo version-info bump --patch --no-commit
+
+# Skip Cargo.lock update
+cargo version-info bump --patch --no-lock
+
+# Skip README.md version updates
+cargo version-info bump --patch --no-readme
+```
+
+**Features:**
+
+- Updates `Cargo.toml` version
+- Updates `Cargo.lock` (unless `--no-lock`)
+- Updates version badges in `README.md` (unless `--no-readme`)
+- Creates a conventional commit: `chore(version): bump X.Y.Z -> X.Y.Z`
+- Pure Rust implementation - no git CLI required
+- SSH commit signing without external tools
+
+**Pure Rust Git Operations:**
+
+All git operations (commits, tree building, index manipulation) are
+performed using [gix](https://github.com/Byron/gitoxide) - a pure Rust
+git implementation. This means `cargo version-info bump` works in
+environments where the git CLI is not installed, such as minimal
+Docker containers or restricted CI runners.
+
+**Commit Signing (No GPG/SSH CLI Required):**
+
+SSH commit signing is implemented in pure Rust using the `ssh-key`
+crate. When signing is enabled in git config, the tool signs commits
+by communicating directly with ssh-agent - no `ssh-keygen` or `gpg`
+CLI tools needed.
+
+```bash
+# Configure signing (standard git config)
+git config commit.gpgsign true
+git config gpg.format ssh
+git config user.signingkey ~/.ssh/id_ed25519.pub
+
+# bump will create signed commits without calling git or ssh-keygen
+cargo version-info bump --patch
+```
+
+GPG signing is not yet implemented (requires gpg-agent).
+
 ### `cargo version-info compare`
 
 Compare two versions.
