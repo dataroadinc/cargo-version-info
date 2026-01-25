@@ -165,6 +165,7 @@ cargo version-info bump --patch --no-readme
 - Updates `Cargo.lock` (unless `--no-lock`)
 - Updates version badges in `README.md` (unless `--no-readme`)
 - Creates a conventional commit: `chore(version): bump X.Y.Z -> X.Y.Z`
+- Selective staging - only commits version changes, not other work
 - Pure Rust implementation - no git CLI required
 - SSH commit signing without external tools
 
@@ -175,6 +176,25 @@ performed using [gix](https://github.com/Byron/gitoxide) - a pure Rust
 git implementation. This means `cargo version-info bump` works in
 environments where the git CLI is not installed, such as minimal
 Docker containers or restricted CI runners.
+
+**Selective Staging (Hunk-Level):**
+
+The bump command commits only version-related changes, leaving other
+uncommitted work untouched. If your `Cargo.toml` has both a version
+change and other modifications (e.g., new dependencies), only the
+version line is included in the commit.
+
+```bash
+# You have uncommitted changes to Cargo.toml (added a dependency)
+# and work-in-progress in src/main.rs
+
+cargo version-info bump --patch
+# Creates commit with ONLY the version bump
+# Your dependency change and src/main.rs remain uncommitted
+```
+
+This uses hunk-level diff filtering - the same concept as `git add -p`
+but automated to select only version-related hunks.
 
 **Commit Signing (No GPG/SSH CLI Required):**
 

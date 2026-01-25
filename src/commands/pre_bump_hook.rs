@@ -242,6 +242,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_pre_bump_hook_success() {
         let _dir = create_temp_cargo_project(
             r#"
@@ -263,6 +264,7 @@ version = "0.1.0"
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_pre_bump_hook_major_bump_warning() {
         let _dir = create_temp_cargo_project(
             r#"
@@ -287,6 +289,7 @@ version = "0.0.0"
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_pre_bump_hook_no_target_version() {
         let _dir = create_temp_cargo_project(
             r#"
@@ -307,6 +310,7 @@ version = "0.2.0"
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_pre_bump_hook_file_not_found() {
         let args = PreBumpHookArgs {
             manifest_path: Some("/nonexistent/Cargo.toml".into()),
@@ -319,6 +323,7 @@ version = "0.2.0"
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_pre_bump_hook_no_version() {
         let _dir = create_temp_cargo_project(
             r#"
@@ -338,6 +343,7 @@ name = "test"
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_pre_bump_hook_workspace_version() {
         let _dir = create_temp_cargo_project(
             r#"

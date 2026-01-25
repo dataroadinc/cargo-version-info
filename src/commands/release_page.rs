@@ -293,6 +293,7 @@ repository = "https://github.com/test/repo"
     }
 
     #[tokio::test]
+    #[serial_test::serial]
     #[cfg_attr(target_os = "windows", ignore)] // Skip on Windows due to subprocess/directory issues
     async fn test_release_page_with_for_version() {
         let _dir = create_test_cargo_project();
@@ -328,6 +329,7 @@ repository = "https://github.com/test/repo"
     }
 
     #[tokio::test]
+    #[serial_test::serial]
     #[cfg_attr(target_os = "windows", ignore)] // Skip on Windows due to subprocess/directory issues
     async fn test_release_page_with_for_version_no_v_prefix() {
         let _dir = create_test_cargo_project();
@@ -363,6 +365,7 @@ repository = "https://github.com/test/repo"
     }
 
     #[tokio::test]
+    #[serial_test::serial]
     #[cfg_attr(target_os = "windows", ignore)] // Skip on Windows due to subprocess/directory issues
     async fn test_release_page_without_for_version_uses_package_version() {
         let _dir = create_test_cargo_project();

@@ -202,6 +202,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_post_bump_hook_success() {
         let _dir = create_temp_cargo_project(
             r#"
@@ -222,6 +223,7 @@ version = "1.0.0"
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_post_bump_hook_version_mismatch() {
         let _dir = create_temp_cargo_project(
             r#"
@@ -242,6 +244,7 @@ version = "0.9.1"
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_post_bump_hook_version_unchanged() {
         let _dir = create_temp_cargo_project(
             r#"
@@ -262,6 +265,7 @@ version = "0.9.0"
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_post_bump_hook_no_target_version() {
         let _dir = create_temp_cargo_project(
             r#"
@@ -282,6 +286,7 @@ version = "2.0.0"
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_post_bump_hook_no_previous_version() {
         let _dir = create_temp_cargo_project(
             r#"
@@ -302,6 +307,7 @@ version = "1.5.0"
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_post_bump_hook_file_not_found() {
         let args = PostBumpHookArgs {
             manifest_path: Some("/nonexistent/Cargo.toml".into()),
@@ -314,6 +320,7 @@ version = "1.5.0"
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_post_bump_hook_no_version() {
         // Cargo defaults to "0.0.0" when no version is specified, so this should
         // succeed
@@ -336,6 +343,7 @@ name = "test"
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_post_bump_hook_exit_on_error_false() {
         let _dir = create_temp_cargo_project(
             r#"
@@ -359,6 +367,7 @@ version = "0.9.1"
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_post_bump_hook_workspace_version() {
         let _dir = tempfile::tempdir().unwrap();
         // Create workspace root Cargo.toml (no [package] section)

@@ -67,6 +67,7 @@ fn init_test_git_repo(dir: &std::path::Path) {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_bump_patch_version() {
     let dir = create_temp_cargo_project(
         r#"
@@ -103,6 +104,7 @@ version = "0.1.2"
 }
 
 #[test]
+#[serial_test::serial]
 fn test_bump_minor_version() {
     let dir = create_temp_cargo_project(
         r#"
@@ -136,6 +138,7 @@ version = "0.1.2"
 }
 
 #[test]
+#[serial_test::serial]
 fn test_bump_major_version() {
     let dir = create_temp_cargo_project(
         r#"
@@ -169,6 +172,7 @@ version = "0.1.2"
 }
 
 #[test]
+#[serial_test::serial]
 fn test_bump_manual_version() {
     let dir = create_temp_cargo_project(
         r#"
@@ -202,6 +206,7 @@ version = "0.1.2"
 }
 
 #[test]
+#[serial_test::serial]
 fn test_bump_same_version_error() {
     let dir = create_temp_cargo_project(
         r#"
@@ -438,6 +443,7 @@ fn create_test_git_repo_with_gix(dir: &std::path::Path, initial_content: &str) -
 }
 
 #[test]
+#[serial_test::serial]
 fn test_hunk_level_staging_only_version_line() {
     // Create repo with initial content
     let dir = tempfile::tempdir().unwrap();
@@ -529,6 +535,7 @@ edition = "2021"
 }
 
 #[test]
+#[serial_test::serial]
 fn test_hunk_level_staging_multiple_changes() {
     // Test with multiple non-version changes
     let dir = tempfile::tempdir().unwrap();
@@ -622,6 +629,7 @@ license = "Apache-2.0"
 }
 
 #[test]
+#[serial_test::serial]
 fn test_commit_has_proper_author() {
     // Verify commits have proper author from git config
     let dir = tempfile::tempdir().unwrap();
@@ -693,6 +701,7 @@ version = "0.5.0"
 }
 
 #[test]
+#[serial_test::serial]
 fn test_only_version_file_in_commit_not_other_staged_files() {
     // Verify that bump doesn't include other staged files
     let dir = tempfile::tempdir().unwrap();
@@ -810,6 +819,7 @@ version = "2.0.0"
 }
 
 #[test]
+#[serial_test::serial]
 fn test_preserves_all_files_from_head() {
     // CRITICAL REGRESSION TEST:
     // Verify that bump doesn't delete other files by creating a minimal tree.
@@ -913,6 +923,7 @@ version = "1.0.0"
 }
 
 #[test]
+#[serial_test::serial]
 fn test_preserves_multiple_files_and_directories() {
     // Extended regression test: verify bump preserves complex directory structures
     let dir = tempfile::tempdir().unwrap();
