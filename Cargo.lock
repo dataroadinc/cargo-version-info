@@ -329,7 +329,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-version-info"
-version = "0.0.11"
+version = "0.0.12"
 dependencies = [
  "anyhow",
  "bstr",
