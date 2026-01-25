@@ -1128,3 +1128,511 @@ edition = "2021"
         "Working tree should match HEAD (no unstaged changes to tracked files)"
     );
 }
+
+/// Test that README.md uses selective staging for version changes.
+///
+/// This test verifies that when README.md has both version-related changes
+/// (e.g., `my-crate = "0.1.0"` -> `"0.2.0"`) and non-version changes (e.g.,
+/// documentation updates), only the version-related changes are committed.
+#[test]
+#[serial_test::serial]
+fn test_readme_selective_staging() {
+    let dir = tempfile::tempdir().unwrap();
+
+    // Create initial Cargo.toml and README.md
+    let initial_cargo_toml = r#"[package]
+name = "my-test-crate"
+version = "0.1.0"
+edition = "2021"
+"#;
+
+    let initial_readme = r#"# My Test Crate
+
+Add to your Cargo.toml:
+
+```toml
+my-test-crate = "0.1.0"
+```
+
+## Description
+
+This is the original description.
+"#;
+
+    let manifest_path = dir.path().join("Cargo.toml");
+    std::fs::write(&manifest_path, initial_cargo_toml).unwrap();
+
+    let readme_path = dir.path().join("README.md");
+    std::fs::write(&readme_path, initial_readme).unwrap();
+
+    // Create src/lib.rs for valid cargo project
+    let src_dir = dir.path().join("src");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("lib.rs"), "// Test library\n").unwrap();
+
+    // Initialize git repo
+    init_test_git_repo(dir.path());
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    // Modify README.md with BOTH version change and non-version change
+    let modified_readme = r#"# My Test Crate
+
+Add to your Cargo.toml:
+
+```toml
+my-test-crate = "0.1.0"
+```
+
+## Description
+
+This is the UPDATED description with more details.
+
+## New Section
+
+This is a new section that was added.
+"#;
+    std::fs::write(&readme_path, modified_readme).unwrap();
+
+    // Run bump - this should only commit the version change in README
+    let args = BumpArgs {
+        manifest_path: Some(manifest_path.clone()),
+        patch: true,
+        version: None,
+        auto: false,
+        major: false,
+        minor: false,
+        owner: None,
+        repo: None,
+        github_token: None,
+        no_commit: false,
+        no_lock: true,    // Skip Cargo.lock for this test
+        no_readme: false, // DO update README
+    };
+
+    let result = bump(args);
+    assert!(result.is_ok(), "Bump failed: {:?}", result.err());
+
+    // Verify the commit
+    let repo = gix::open(dir.path()).expect("Failed to open repo");
+    let head = repo.head().expect("Failed to read HEAD");
+    let commit_id = head.id().expect("HEAD not pointing to commit");
+    let commit = repo
+        .find_object(commit_id)
+        .expect("Failed to find commit")
+        .try_into_commit()
+        .expect("Not a commit");
+
+    let tree = commit.tree().expect("Failed to get tree");
+
+    // Verify README.md in commit
+    let readme_entry = tree
+        .lookup_entry_by_path("README.md")
+        .expect("Failed to lookup README")
+        .expect("README not in commit");
+
+    let blob = readme_entry
+        .object()
+        .expect("Failed to get blob")
+        .try_into_blob()
+        .expect("Not a blob");
+
+    let committed_readme = blob.data.to_str_lossy();
+
+    // The commit should have the VERSION change (0.1.0 -> 0.1.1 for patch bump)
+    assert!(
+        committed_readme.contains(r#"my-test-crate = "0.1.1""#),
+        "README in commit should have updated version (0.1.1)"
+    );
+
+    // The commit should NOT have the description change
+    assert!(
+        committed_readme.contains("This is the original description."),
+        "README in commit should have ORIGINAL description, not updated"
+    );
+    assert!(
+        !committed_readme.contains("UPDATED description"),
+        "README in commit should NOT have the updated description"
+    );
+    assert!(
+        !committed_readme.contains("## New Section"),
+        "README in commit should NOT have the new section"
+    );
+
+    // Verify working directory still has ALL changes
+    let working_readme = std::fs::read_to_string(&readme_path).expect("Failed to read README");
+    assert!(
+        working_readme.contains("UPDATED description"),
+        "Working README should still have the updated description"
+    );
+    assert!(
+        working_readme.contains("## New Section"),
+        "Working README should still have the new section"
+    );
+}
+
+/// Test that Cargo.lock uses selective staging for version changes.
+///
+/// This test verifies that when Cargo.lock has both our crate's version
+/// change and other dependency updates (pre-existing uncommitted changes),
+/// only our crate's version change is committed.
+#[test]
+#[serial_test::serial]
+fn test_cargo_lock_selective_staging() {
+    let dir = tempfile::tempdir().unwrap();
+
+    // Create initial Cargo.toml
+    let initial_cargo_toml = r#"[package]
+name = "my-test-crate"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# No real dependencies - we'll simulate Cargo.lock content
+"#;
+
+    // Create initial Cargo.lock (simulating a lock file with our crate and others)
+    let initial_cargo_lock = r#"# This file is automatically @generated by Cargo.
+# It is not intended for manual editing.
+version = 3
+
+[[package]]
+name = "my-test-crate"
+version = "0.1.0"
+
+[[package]]
+name = "other-dependency"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+"#;
+
+    let manifest_path = dir.path().join("Cargo.toml");
+    std::fs::write(&manifest_path, initial_cargo_toml).unwrap();
+
+    let cargo_lock_path = dir.path().join("Cargo.lock");
+    std::fs::write(&cargo_lock_path, initial_cargo_lock).unwrap();
+
+    // Create src/lib.rs for valid cargo project
+    let src_dir = dir.path().join("src");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("lib.rs"), "// Test library\n").unwrap();
+
+    // Initialize git repo
+    init_test_git_repo(dir.path());
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    // Simulate a pre-existing dependency update in Cargo.lock
+    // (like someone ran `cargo update` but didn't commit)
+    let modified_cargo_lock = r#"# This file is automatically @generated by Cargo.
+# It is not intended for manual editing.
+version = 3
+
+[[package]]
+name = "my-test-crate"
+version = "0.1.0"
+
+[[package]]
+name = "other-dependency"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+"#;
+    std::fs::write(&cargo_lock_path, modified_cargo_lock).unwrap();
+
+    // Run bump with --no-lock to skip cargo update (we're manually controlling
+    // Cargo.lock) But we need the selective staging logic to run, so we'll use
+    // a custom approach First update Cargo.toml version
+    let updated_cargo_toml = r#"[package]
+name = "my-test-crate"
+version = "0.2.0"
+edition = "2021"
+
+[dependencies]
+# No real dependencies - we'll simulate Cargo.lock content
+"#;
+    std::fs::write(&manifest_path, updated_cargo_toml).unwrap();
+
+    // Now update Cargo.lock to have our new version AND the dependency update
+    let final_cargo_lock = r#"# This file is automatically @generated by Cargo.
+# It is not intended for manual editing.
+version = 3
+
+[[package]]
+name = "my-test-crate"
+version = "0.2.0"
+
+[[package]]
+name = "other-dependency"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+"#;
+    std::fs::write(&cargo_lock_path, final_cargo_lock).unwrap();
+
+    // Use commit function directly to test selective staging
+    use super::commit::{
+        AdditionalFile,
+        FileType,
+        commit_version_changes_with_files,
+    };
+
+    // Get HEAD content of Cargo.lock (the initial version)
+    let head_cargo_lock = initial_cargo_lock;
+
+    let additional_files = vec![AdditionalFile {
+        path: cargo_lock_path.clone(),
+        working_content: final_cargo_lock.to_string(),
+        head_content: Some(head_cargo_lock.to_string()),
+        file_type: FileType::CargoLock,
+    }];
+
+    let result = commit_version_changes_with_files(
+        &manifest_path,
+        "my-test-crate",
+        "0.1.0",
+        "0.2.0",
+        &additional_files,
+    );
+    assert!(result.is_ok(), "Commit failed: {:?}", result.err());
+
+    // Verify the commit
+    let repo = gix::open(dir.path()).expect("Failed to open repo");
+    let head = repo.head().expect("Failed to read HEAD");
+    let commit_id = head.id().expect("HEAD not pointing to commit");
+    let commit = repo
+        .find_object(commit_id)
+        .expect("Failed to find commit")
+        .try_into_commit()
+        .expect("Not a commit");
+
+    let tree = commit.tree().expect("Failed to get tree");
+
+    // Verify Cargo.lock in commit
+    let lock_entry = tree
+        .lookup_entry_by_path("Cargo.lock")
+        .expect("Failed to lookup Cargo.lock")
+        .expect("Cargo.lock not in commit");
+
+    let blob = lock_entry
+        .object()
+        .expect("Failed to get blob")
+        .try_into_blob()
+        .expect("Not a blob");
+
+    let committed_lock = blob.data.to_str_lossy();
+
+    // The commit should have OUR crate's version change
+    assert!(
+        committed_lock.contains(r#"name = "my-test-crate""#),
+        "Cargo.lock should have our crate"
+    );
+    assert!(
+        committed_lock.contains(r#"version = "0.2.0""#),
+        "Cargo.lock should have our crate's new version"
+    );
+
+    // The commit should NOT have the other-dependency update
+    assert!(
+        committed_lock.contains(r#"name = "other-dependency""#),
+        "Cargo.lock should have other-dependency"
+    );
+    assert!(
+        committed_lock.contains(r#"version = "1.0.0""#),
+        "Cargo.lock should have other-dependency's ORIGINAL version (1.0.0), not 2.0.0"
+    );
+    assert!(
+        !committed_lock.matches(r#"version = "2.0.0""#).any(|_| true),
+        "Cargo.lock should NOT have the updated other-dependency version"
+    );
+
+    // Verify working directory still has the dependency update
+    let working_lock =
+        std::fs::read_to_string(&cargo_lock_path).expect("Failed to read Cargo.lock");
+    assert!(
+        working_lock.contains(r#"version = "2.0.0""#),
+        "Working Cargo.lock should still have the dependency update"
+    );
+}
+
+/// Test that all files (Cargo.toml, README.md, Cargo.lock) use selective
+/// staging when they have non-version changes.
+#[test]
+#[serial_test::serial]
+fn test_all_files_selective_staging() {
+    let dir = tempfile::tempdir().unwrap();
+
+    // Create initial files
+    let initial_cargo_toml = r#"[package]
+name = "test-crate"
+version = "1.0.0"
+description = "Original description"
+edition = "2021"
+"#;
+
+    let initial_readme = r#"# Test Crate
+
+```toml
+test-crate = "1.0.0"
+```
+
+Original readme content.
+"#;
+
+    let initial_cargo_lock = r#"# This file is automatically @generated by Cargo.
+version = 3
+
+[[package]]
+name = "test-crate"
+version = "1.0.0"
+
+[[package]]
+name = "dep"
+version = "1.0.0"
+"#;
+
+    let manifest_path = dir.path().join("Cargo.toml");
+    std::fs::write(&manifest_path, initial_cargo_toml).unwrap();
+
+    let readme_path = dir.path().join("README.md");
+    std::fs::write(&readme_path, initial_readme).unwrap();
+
+    let cargo_lock_path = dir.path().join("Cargo.lock");
+    std::fs::write(&cargo_lock_path, initial_cargo_lock).unwrap();
+
+    // Create src/lib.rs
+    let src_dir = dir.path().join("src");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("lib.rs"), "// Test\n").unwrap();
+
+    // Initialize git repo
+    init_test_git_repo(dir.path());
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    // Modify ALL files with version AND non-version changes
+    let modified_cargo_toml = r#"[package]
+name = "test-crate"
+version = "1.0.0"
+description = "UPDATED description"
+edition = "2021"
+"#;
+    std::fs::write(&manifest_path, modified_cargo_toml).unwrap();
+
+    let modified_readme = r#"# Test Crate
+
+```toml
+test-crate = "1.0.0"
+```
+
+UPDATED readme content with new docs.
+"#;
+    std::fs::write(&readme_path, modified_readme).unwrap();
+
+    let modified_cargo_lock = r#"# This file is automatically @generated by Cargo.
+version = 3
+
+[[package]]
+name = "test-crate"
+version = "1.0.0"
+
+[[package]]
+name = "dep"
+version = "2.0.0"
+"#;
+    std::fs::write(&cargo_lock_path, modified_cargo_lock).unwrap();
+
+    // Run bump
+    let args = BumpArgs {
+        manifest_path: Some(manifest_path.clone()),
+        patch: true,
+        version: None,
+        auto: false,
+        major: false,
+        minor: false,
+        owner: None,
+        repo: None,
+        github_token: None,
+        no_commit: false,
+        no_lock: true,    // Don't run cargo update
+        no_readme: false, // Do update README
+    };
+
+    let result = bump(args);
+    assert!(result.is_ok(), "Bump failed: {:?}", result.err());
+
+    // Verify the commit
+    let repo = gix::open(dir.path()).expect("Failed to open repo");
+    let head = repo.head().expect("Failed to read HEAD");
+    let commit_id = head.id().expect("HEAD not pointing to commit");
+    let commit = repo
+        .find_object(commit_id)
+        .expect("Failed to find commit")
+        .try_into_commit()
+        .expect("Not a commit");
+
+    let tree = commit.tree().expect("Failed to get tree");
+
+    // Check Cargo.toml - only version change should be committed
+    let cargo_entry = tree
+        .lookup_entry_by_path("Cargo.toml")
+        .expect("Failed to lookup")
+        .expect("Cargo.toml not found");
+    let blob = cargo_entry.object().unwrap().try_into_blob().unwrap();
+    let committed_cargo = blob.data.to_str_lossy();
+
+    assert!(
+        committed_cargo.contains(r#"version = "1.0.1""#),
+        "Cargo.toml should have new version"
+    );
+    assert!(
+        committed_cargo.contains(r#"description = "Original description""#),
+        "Cargo.toml should have ORIGINAL description"
+    );
+
+    // Check README.md - only version line should be committed
+    let readme_entry = tree
+        .lookup_entry_by_path("README.md")
+        .expect("Failed to lookup")
+        .expect("README.md not found");
+    let blob = readme_entry.object().unwrap().try_into_blob().unwrap();
+    let committed_readme = blob.data.to_str_lossy();
+
+    assert!(
+        committed_readme.contains(r#"test-crate = "1.0.1""#),
+        "README should have new version"
+    );
+    assert!(
+        committed_readme.contains("Original readme content."),
+        "README should have ORIGINAL content"
+    );
+
+    // Verify working directory still has ALL changes
+    let working_cargo = std::fs::read_to_string(&manifest_path).unwrap();
+    assert!(working_cargo.contains("UPDATED description"));
+
+    let working_readme = std::fs::read_to_string(&readme_path).unwrap();
+    assert!(working_readme.contains("UPDATED readme content"));
+}

@@ -241,7 +241,10 @@ use crate::version::{
 /// - You're making multiple related changes
 /// - You prefer manual commit control
 pub fn bump(args: BumpArgs) -> Result<()> {
-    use std::path::PathBuf;
+    use commit::{
+        AdditionalFile,
+        FileType,
+    };
 
     let mut logger = cargo_plugin_utils::logger::Logger::new();
 
@@ -285,7 +288,15 @@ pub fn bump(args: BumpArgs) -> Result<()> {
         .unwrap_or_else(|| std::path::Path::new("."));
 
     // Step 5: Update Cargo.lock (unless --no-lock)
+    // First, capture the HEAD content of Cargo.lock for selective staging
     let cargo_lock_path = manifest_dir.join("Cargo.lock");
+    let cargo_lock_head_content = if !args.no_lock && cargo_lock_path.exists() {
+        // Read HEAD content using gix
+        get_file_head_content(manifest_path, &cargo_lock_path).ok()
+    } else {
+        None
+    };
+
     if !args.no_lock {
         logger.status("Updating", "Cargo.lock");
         let status = std::process::Command::new("cargo")
@@ -301,7 +312,14 @@ pub fn bump(args: BumpArgs) -> Result<()> {
     }
 
     // Step 6: Update README.md (unless --no-readme)
+    // First, capture HEAD content for selective staging
     let readme_path = manifest_dir.join("README.md");
+    let readme_head_content = if !args.no_readme && readme_path.exists() {
+        get_file_head_content(manifest_path, &readme_path).ok()
+    } else {
+        None
+    };
+
     let readme_update = if !args.no_readme {
         logger.status("Checking", "README.md");
         let result = readme_update::update_readme_file(
@@ -331,25 +349,36 @@ pub fn bump(args: BumpArgs) -> Result<()> {
 
         // Collect additional files to commit (besides Cargo.toml which is handled
         // specially)
-        let mut additional_files: Vec<(PathBuf, String)> = Vec::new();
+        let mut additional_files: Vec<AdditionalFile> = Vec::new();
 
         // Include Cargo.lock if it was updated
         if !args.no_lock && cargo_lock_path.exists() {
             let cargo_lock_content = std::fs::read_to_string(&cargo_lock_path)
                 .with_context(|| format!("Failed to read {}", cargo_lock_path.display()))?;
-            additional_files.push((cargo_lock_path, cargo_lock_content));
+            additional_files.push(AdditionalFile {
+                path: cargo_lock_path,
+                working_content: cargo_lock_content,
+                head_content: cargo_lock_head_content,
+                file_type: FileType::CargoLock,
+            });
         }
 
         // Include README.md if it was modified
         if let Some(update) = readme_update
             && update.modified
         {
-            additional_files.push((readme_path, update.content));
+            additional_files.push(AdditionalFile {
+                path: readme_path,
+                working_content: update.content,
+                head_content: readme_head_content,
+                file_type: FileType::Readme,
+            });
         }
 
         // Commit Cargo.toml (with selective staging) plus additional files
         commit::commit_version_changes_with_files(
             manifest_path,
+            &package_name,
             &current_version,
             &target_version,
             &additional_files,
@@ -424,4 +453,73 @@ fn calculate_target_version(args: &BumpArgs, current_version: &str) -> Result<St
         };
         Ok(format_version(new_major, new_minor, new_patch))
     }
+}
+
+/// Get the content of a file from HEAD commit.
+///
+/// This is used for selective staging - we need the HEAD content to compare
+/// against the working directory content and filter out non-version changes.
+///
+/// # Arguments
+///
+/// * `manifest_path` - Path to Cargo.toml (used to discover the git repo)
+/// * `file_path` - Path to the file to read from HEAD
+///
+/// # Returns
+///
+/// Returns the file content from HEAD as a String.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Not in a git repository
+/// - File doesn't exist in HEAD
+/// - Git operations fail
+fn get_file_head_content(
+    manifest_path: &std::path::Path,
+    file_path: &std::path::Path,
+) -> Result<String> {
+    use bstr::ByteSlice;
+
+    // Discover git repository
+    let repo = gix::discover(
+        manifest_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new(".")),
+    )
+    .context("Not in a git repository")?;
+
+    // Calculate relative path from repository root
+    let repo_path = repo.path().parent().context("Invalid repository path")?;
+    let relative_path = file_path
+        .strip_prefix(repo_path)
+        .or_else(|_| file_path.strip_prefix("."))
+        .unwrap_or(file_path);
+
+    // Get HEAD commit
+    let head = repo.head().context("Failed to read HEAD")?;
+    let head_commit_id = head.id().context("HEAD does not point to a commit")?;
+    let head_commit = repo
+        .find_object(head_commit_id)
+        .context("Failed to find HEAD commit")?
+        .try_into_commit()
+        .context("HEAD is not a commit")?;
+
+    // Get tree from HEAD
+    let head_tree = head_commit.tree().context("Failed to get HEAD tree")?;
+
+    // Lookup the file in the tree
+    let entry = head_tree
+        .lookup_entry_by_path(relative_path)
+        .context("Failed to lookup file in HEAD tree")?
+        .with_context(|| format!("File {} does not exist in HEAD", relative_path.display()))?;
+
+    // Read blob content
+    let blob = entry
+        .object()
+        .context("Failed to get blob from tree entry")?
+        .try_into_blob()
+        .context("Tree entry is not a blob")?;
+
+    Ok(blob.data.to_str_lossy().into_owned())
 }

@@ -61,12 +61,22 @@ algorithm.
 The goal is to stage ONLY version changes, not other uncommitted work.
 This is the core value proposition of the bump command.
 
-**✅ Implemented**: True hunk-level staging using the `similar` crate:
+**✅ Implemented**: True hunk-level staging using the `similar` crate
+for all version-related files:
 
+| File        | Filtering Strategy                              |
+| ----------- | ----------------------------------------------- |
+| Cargo.toml  | Lines containing "version" or version strings   |
+| Cargo.lock  | Only our crate's `[[package]]` entry changes    |
+| README.md   | Only lines matching `crate-name = "version"`    |
+
+**How it works**:
+
+- Captures HEAD content of each file before modifications
 - Generates unified diff between HEAD and working directory
-- Identifies version-related hunks (lines containing version strings)
-- Creates partially-staged content with only version changes
-- Leaves non-version changes uncommitted
+- Identifies version-related hunks based on file type
+- Creates partially-staged content with only those changes
+- Leaves non-version changes uncommitted in working directory
 
 See: `diff.rs` for the hunk filtering algorithm and `commit.rs` for
 orchestration.
@@ -132,24 +142,38 @@ Each module contains:
 
 ### ✅ Hunk-Level Staging (Implemented!)
 
-The bump command now implements true line-level selective staging:
+The bump command implements true line-level selective staging for all
+version-related files.
 
-**How it works**:
+**Supported files**:
 
-1. Generate unified diff between HEAD and working directory
-2. Identify which lines contain version-related changes
-3. Create partially-staged content with only those lines changed
-4. Write the partial content as a blob
-5. Build tree and commit with only version changes
+- **Cargo.toml**: Only version line changes committed
+- **Cargo.lock**: Only our crate's package entry committed (not
+  dependency updates from `cargo update`)
+- **README.md**: Only `crate-name = "version"` lines committed (not
+  documentation changes)
 
 **Example scenario**:
 
-```toml
-# In working directory, Cargo.toml has:
-# - Line 3: version changed from 0.1.0 → 0.2.0 (staged ✓)
-# - Line 15: description changed (NOT staged ✗)
+```text
+Working directory has uncommitted changes:
+- Cargo.toml: version 0.1.0 → 0.2.0, description changed
+- README.md: version badge updated, new section added
+- Cargo.lock: our version updated, serde upgraded 1.0 → 1.1
 
-# Result: Commit contains only the version line change!
+After `cargo version-info bump --patch`:
+- Commit contains: version changes ONLY
+- Still uncommitted: description change, new README section, serde upgrade
+```
+
+**Warning messages**:
+
+When selective staging is used, a warning is displayed:
+
+```text
+⚠️  Using hunk-level staging: only version lines will be committed.
+⚠️  Using hunk-level staging for README.md: only version lines will be committed.
+⚠️  Using hunk-level staging for Cargo.lock: only our crate's version will be committed.
 ```
 
 See `diff.rs` for the implementation using the `similar` crate.

@@ -180,17 +180,23 @@ Docker containers or restricted CI runners.
 **Selective Staging (Hunk-Level):**
 
 The bump command commits only version-related changes, leaving other
-uncommitted work untouched. If your `Cargo.toml` has both a version
-change and other modifications (e.g., new dependencies), only the
-version line is included in the commit.
+uncommitted work untouched. This applies to all version-related files:
+
+| File        | What gets committed                             |
+| ----------- | ----------------------------------------------- |
+| Cargo.toml  | Only lines containing version changes           |
+| Cargo.lock  | Only our crate's package entry (not dep updates)|
+| README.md   | Only `crate-name = "version"` lines             |
 
 ```bash
-# You have uncommitted changes to Cargo.toml (added a dependency)
-# and work-in-progress in src/main.rs
+# You have uncommitted changes:
+# - Cargo.toml: new dependency added
+# - Cargo.lock: dependency update from `cargo update`
+# - README.md: typo fix in description
 
 cargo version-info bump --patch
-# Creates commit with ONLY the version bump
-# Your dependency change and src/main.rs remain uncommitted
+# Creates commit with ONLY the version changes
+# Your dependency, lock update, and typo fix remain uncommitted
 ```
 
 This uses hunk-level diff filtering - the same concept as `git add -p`

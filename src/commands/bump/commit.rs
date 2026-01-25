@@ -97,7 +97,10 @@
 //! The git command `git add -p` (interactive patch mode) does this, but
 //! implementing it programmatically is non-trivial.
 
-use std::path::Path;
+use std::path::{
+    Path,
+    PathBuf,
+};
 
 use anyhow::{
     Context,
@@ -107,6 +110,31 @@ use bstr::ByteSlice;
 use smallvec::SmallVec;
 
 use super::diff;
+
+/// Type of additional file for selective staging.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileType {
+    /// Cargo.lock file - filter to only our crate's version changes
+    CargoLock,
+    /// README.md file - filter to only version reference changes
+    Readme,
+    /// Other files - commit full content
+    Other,
+}
+
+/// An additional file to include in the version bump commit.
+#[derive(Debug)]
+pub struct AdditionalFile {
+    /// Path to the file (absolute or relative to repo root)
+    pub path: PathBuf,
+    /// Current working directory content
+    pub working_content: String,
+    /// Content from HEAD (for selective staging). None means commit full
+    /// content.
+    pub head_content: Option<String>,
+    /// Type of file (determines filtering strategy)
+    pub file_type: FileType,
+}
 
 /// Commit version-related changes using pure gix (no git binary).
 ///
@@ -122,6 +150,8 @@ use super::diff;
 /// # Arguments
 ///
 /// * `manifest_path` - Path to the Cargo.toml file (absolute or relative)
+/// * `crate_name` - The crate/package name (for selective staging of related
+///   files)
 /// * `old_version` - The previous version (for verification and commit message)
 /// * `new_version` - The new version (for verification and commit message)
 ///
@@ -142,7 +172,7 @@ use super::diff;
 /// use cargo_version_info::commands::bump::commit::commit_version_changes;
 ///
 /// let manifest = Path::new("./Cargo.toml");
-/// commit_version_changes(manifest, "0.1.0", "0.2.0")?;
+/// commit_version_changes(manifest, "my-crate", "0.1.0", "0.2.0")?;
 /// # Ok(())
 /// # }
 /// ```
@@ -202,41 +232,46 @@ use super::diff;
 /// equivalent to `git commit` moving the branch forward.
 pub fn commit_version_changes(
     manifest_path: &Path,
+    crate_name: &str,
     old_version: &str,
     new_version: &str,
 ) -> Result<()> {
     // Call the multi-file version with no additional files
-    commit_version_changes_with_files(manifest_path, old_version, new_version, &[])
+    commit_version_changes_with_files(manifest_path, crate_name, old_version, new_version, &[])
 }
 
 /// Commit version-related changes along with additional files.
 ///
 /// This function combines the selective staging of Cargo.toml (only version
-/// changes) with full content commits for additional files like Cargo.lock
+/// changes) with selective staging for additional files like Cargo.lock
 /// and README.md.
 ///
 /// # Arguments
 ///
 /// * `manifest_path` - Path to the Cargo.toml file
+/// * `crate_name` - The crate/package name (for selective staging)
 /// * `old_version` - The previous version
 /// * `new_version` - The new version
-/// * `additional_files` - List of (path, content) pairs for other files to
-///   include
+/// * `additional_files` - List of additional files to include with their
+///   content and metadata for selective staging
 ///
 /// # Selective Staging
 ///
-/// For Cargo.toml, only version-related changes are committed, not other
-/// uncommitted modifications. This is done by:
-/// 1. Reading HEAD's version of Cargo.toml
-/// 2. Applying only version-related hunks from the working directory
-/// 3. Creating a blob with this patched content
+/// For all files, only version-related changes are committed:
 ///
-/// For additional files (Cargo.lock, README.md), the full content is committed.
+/// - **Cargo.toml**: Only lines containing "version" or the version strings
+/// - **Cargo.lock**: Only our crate's package entry changes
+/// - **README.md**: Only lines with `crate-name = "version"` patterns
+/// - **Other files**: Full content (no filtering)
+///
+/// This ensures that unrelated uncommitted changes (typo fixes, dependency
+/// updates, etc.) are not accidentally included in the version bump commit.
 pub fn commit_version_changes_with_files(
     manifest_path: &Path,
+    crate_name: &str,
     old_version: &str,
     new_version: &str,
-    additional_files: &[(std::path::PathBuf, String)],
+    additional_files: &[AdditionalFile],
 ) -> Result<()> {
     // Discover git repository by walking up from the manifest's directory
     let repo = gix::discover(manifest_path.parent().unwrap_or_else(|| Path::new(".")))
@@ -301,13 +336,70 @@ pub fn commit_version_changes_with_files(
     let mut file_updates: Vec<(std::path::PathBuf, gix::ObjectId)> = Vec::new();
     file_updates.push((relative_path.to_path_buf(), cargo_toml_blob_id));
 
-    // Add additional files (Cargo.lock, README.md, etc.)
-    for (path, content) in additional_files {
-        let file_relative_path = path
+    // Add additional files (Cargo.lock, README.md, etc.) with selective staging
+    for file in additional_files {
+        let file_relative_path = file
+            .path
             .strip_prefix(repo_path)
-            .or_else(|_| path.strip_prefix("."))
-            .unwrap_or(path);
-        let blob_id = write_blob(&repo, content)?;
+            .or_else(|_| file.path.strip_prefix("."))
+            .unwrap_or(&file.path);
+
+        // Determine what content to commit based on file type and available HEAD
+        // content
+        let content_to_commit = match (&file.head_content, file.file_type) {
+            (Some(head_content), FileType::Readme) => {
+                // Check if there are non-version changes
+                if diff::has_non_readme_version_changes(
+                    head_content,
+                    &file.working_content,
+                    crate_name,
+                    old_version,
+                    new_version,
+                ) {
+                    eprintln!(
+                        "⚠️  Using hunk-level staging for README.md: only version lines will be committed."
+                    );
+                    diff::apply_readme_version_hunks(
+                        head_content,
+                        &file.working_content,
+                        crate_name,
+                        old_version,
+                        new_version,
+                    )?
+                } else {
+                    file.working_content.clone()
+                }
+            }
+            (Some(head_content), FileType::CargoLock) => {
+                // Check if there are non-version changes
+                if diff::has_non_cargo_lock_version_changes(
+                    head_content,
+                    &file.working_content,
+                    crate_name,
+                    old_version,
+                    new_version,
+                ) {
+                    eprintln!(
+                        "⚠️  Using hunk-level staging for Cargo.lock: only our crate's version will be committed."
+                    );
+                    diff::apply_cargo_lock_version_hunks(
+                        head_content,
+                        &file.working_content,
+                        crate_name,
+                        old_version,
+                        new_version,
+                    )?
+                } else {
+                    file.working_content.clone()
+                }
+            }
+            _ => {
+                // No HEAD content or Other file type - commit full content
+                file.working_content.clone()
+            }
+        };
+
+        let blob_id = write_blob(&repo, &content_to_commit)?;
         file_updates.push((file_relative_path.to_path_buf(), blob_id));
     }
 
