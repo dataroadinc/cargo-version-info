@@ -202,6 +202,40 @@ cargo version-info bump --patch
 This uses hunk-level diff filtering - the same concept as `git add -p`
 but automated to select only version-related hunks.
 
+**Hooks and Additional Files:**
+
+The bump command supports hooks for running custom commands and
+including additional files in the version commit. Configure hooks in
+`Cargo.toml` under `[package.metadata.version-info]`:
+
+```toml
+[package.metadata.version-info]
+# Commands to run after Cargo.toml is updated but before commit
+pre_bump_hooks = [
+    "./scripts/sync-npm-version.sh {{version}}"
+]
+
+# Additional files to include in the version bump commit
+additional_files = [
+    "npm/package.json"
+]
+
+# Commands to run after the commit is created
+post_bump_hooks = [
+    "echo 'Version {{version}} committed'"
+]
+```
+
+| Option            | Description                                     |
+| ----------------- | ----------------------------------------------- |
+| `pre_bump_hooks`  | Commands run after Cargo.toml update, before commit |
+| `additional_files`| Files to stage and commit with version changes  |
+| `post_bump_hooks` | Commands run after commit is created            |
+
+The `{{version}}` placeholder is replaced with the new version string.
+Use pre_bump_hooks to update other files (like package.json) and
+additional_files to include them in the version commit.
+
 **Commit Signing (No GPG/SSH CLI Required):**
 
 SSH commit signing is implemented in pure Rust using the `ssh-key`

@@ -1636,3 +1636,430 @@ version = "2.0.0"
     let working_readme = std::fs::read_to_string(&readme_path).unwrap();
     assert!(working_readme.contains("UPDATED readme content"));
 }
+
+// ============================================================================
+// Hook Integration Tests
+// ============================================================================
+
+/// Test that pre_bump_hooks are executed with correct version substitution.
+#[test]
+#[serial_test::serial]
+fn test_pre_bump_hooks_executed() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = dir.path().join("Cargo.toml");
+    let marker_file = dir.path().join("pre_bump_marker.txt");
+
+    // Create Cargo.toml with pre_bump_hooks configuration
+    let cargo_content = format!(
+        r#"[package]
+name = "test-hooks"
+version = "1.0.0"
+
+[package.metadata.version-info]
+pre_bump_hooks = ["echo '{{{{version}}}}' > {}"]
+"#,
+        marker_file.display()
+    );
+    std::fs::write(&manifest_path, &cargo_content).unwrap();
+
+    // Create src directory
+    let src_dir = dir.path().join("src");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("lib.rs"), "// Test library\n").unwrap();
+
+    init_test_git_repo(dir.path());
+
+    let args = BumpArgs {
+        manifest_path: Some(manifest_path.clone()),
+        patch: true,
+        version: None,
+        auto: false,
+        major: false,
+        minor: false,
+        owner: None,
+        repo: None,
+        github_token: None,
+        no_commit: true, // Skip commit to isolate hook test
+        no_lock: true,
+        no_readme: true,
+    };
+
+    let result = bump(args);
+    assert!(result.is_ok(), "Bump failed: {:?}", result.err());
+
+    // Verify hook was executed with correct version
+    assert!(
+        marker_file.exists(),
+        "Pre-bump hook should have created marker file"
+    );
+    let content = std::fs::read_to_string(&marker_file).unwrap();
+    assert_eq!(
+        content.trim(),
+        "1.0.1",
+        "Hook should receive the NEW version"
+    );
+}
+
+/// Test that failing pre_bump_hooks abort the bump operation.
+#[test]
+#[serial_test::serial]
+fn test_pre_bump_hooks_failure_aborts_bump() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = dir.path().join("Cargo.toml");
+
+    // Create Cargo.toml with a failing pre_bump_hook
+    let cargo_content = r#"[package]
+name = "test-hooks"
+version = "1.0.0"
+
+[package.metadata.version-info]
+pre_bump_hooks = ["exit 1"]
+"#;
+    std::fs::write(&manifest_path, cargo_content).unwrap();
+
+    // Create src directory
+    let src_dir = dir.path().join("src");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("lib.rs"), "// Test library\n").unwrap();
+
+    init_test_git_repo(dir.path());
+
+    let args = BumpArgs {
+        manifest_path: Some(manifest_path.clone()),
+        patch: true,
+        version: None,
+        auto: false,
+        major: false,
+        minor: false,
+        owner: None,
+        repo: None,
+        github_token: None,
+        no_commit: false,
+        no_lock: true,
+        no_readme: true,
+    };
+
+    let result = bump(args);
+    assert!(result.is_err(), "Bump should fail when pre_bump_hook fails");
+
+    // Verify error message mentions hook failure
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("Hook failed") || err_msg.contains("exit code"),
+        "Error should mention hook failure: {}",
+        err_msg
+    );
+}
+
+/// Test that post_bump_hooks are executed after successful commit.
+#[test]
+#[serial_test::serial]
+fn test_post_bump_hooks_executed_after_commit() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = dir.path().join("Cargo.toml");
+    let marker_file = dir.path().join("post_bump_marker.txt");
+
+    // Create Cargo.toml with post_bump_hooks configuration
+    let cargo_content = format!(
+        r#"[package]
+name = "test-hooks"
+version = "1.0.0"
+
+[package.metadata.version-info]
+post_bump_hooks = ["echo '{{{{version}}}}' > {}"]
+"#,
+        marker_file.display()
+    );
+    std::fs::write(&manifest_path, &cargo_content).unwrap();
+
+    // Create src directory
+    let src_dir = dir.path().join("src");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("lib.rs"), "// Test library\n").unwrap();
+
+    init_test_git_repo(dir.path());
+
+    let args = BumpArgs {
+        manifest_path: Some(manifest_path.clone()),
+        patch: true,
+        version: None,
+        auto: false,
+        major: false,
+        minor: false,
+        owner: None,
+        repo: None,
+        github_token: None,
+        no_commit: false, // Need commit for post_bump_hooks
+        no_lock: true,
+        no_readme: true,
+    };
+
+    let result = bump(args);
+    assert!(result.is_ok(), "Bump failed: {:?}", result.err());
+
+    // Verify post-bump hook was executed
+    assert!(
+        marker_file.exists(),
+        "Post-bump hook should have created marker file"
+    );
+    let content = std::fs::read_to_string(&marker_file).unwrap();
+    assert_eq!(
+        content.trim(),
+        "1.0.1",
+        "Hook should receive the NEW version"
+    );
+}
+
+/// Test that post_bump_hooks are NOT executed when --no-commit is used.
+#[test]
+#[serial_test::serial]
+fn test_post_bump_hooks_skipped_with_no_commit() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = dir.path().join("Cargo.toml");
+    let marker_file = dir.path().join("post_bump_marker.txt");
+
+    // Create Cargo.toml with post_bump_hooks configuration
+    let cargo_content = format!(
+        r#"[package]
+name = "test-hooks"
+version = "1.0.0"
+
+[package.metadata.version-info]
+post_bump_hooks = ["echo 'executed' > {}"]
+"#,
+        marker_file.display()
+    );
+    std::fs::write(&manifest_path, &cargo_content).unwrap();
+
+    // Create src directory
+    let src_dir = dir.path().join("src");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("lib.rs"), "// Test library\n").unwrap();
+
+    init_test_git_repo(dir.path());
+
+    let args = BumpArgs {
+        manifest_path: Some(manifest_path.clone()),
+        patch: true,
+        version: None,
+        auto: false,
+        major: false,
+        minor: false,
+        owner: None,
+        repo: None,
+        github_token: None,
+        no_commit: true, // Skip commit
+        no_lock: true,
+        no_readme: true,
+    };
+
+    let result = bump(args);
+    assert!(result.is_ok(), "Bump failed: {:?}", result.err());
+
+    // Verify post-bump hook was NOT executed
+    assert!(
+        !marker_file.exists(),
+        "Post-bump hook should NOT run when --no-commit is used"
+    );
+}
+
+/// Test that additional_files are included in the version bump commit.
+#[test]
+#[serial_test::serial]
+fn test_additional_files_included_in_commit() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = dir.path().join("Cargo.toml");
+    let package_json = dir.path().join("package.json");
+
+    // Create initial package.json
+    std::fs::write(&package_json, r#"{"version": "1.0.0"}"#).unwrap();
+
+    // Create Cargo.toml with hooks that update package.json
+    let cargo_content = format!(
+        r#"[package]
+name = "test-hooks"
+version = "1.0.0"
+
+[package.metadata.version-info]
+pre_bump_hooks = ["echo '{{\"version\": \"{{{{version}}}}\"}}' > {}"]
+additional_files = ["package.json"]
+"#,
+        package_json.display()
+    );
+    std::fs::write(&manifest_path, &cargo_content).unwrap();
+
+    // Create src directory
+    let src_dir = dir.path().join("src");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("lib.rs"), "// Test library\n").unwrap();
+
+    // Initialize git and add package.json to initial commit
+    std::process::Command::new("git")
+        .arg("init")
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["config", "commit.gpgsign", "false"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["add", "Cargo.toml", "package.json", "src/lib.rs"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["commit", "-m", "Initial commit"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    let args = BumpArgs {
+        manifest_path: Some(manifest_path.clone()),
+        patch: true,
+        version: None,
+        auto: false,
+        major: false,
+        minor: false,
+        owner: None,
+        repo: None,
+        github_token: None,
+        no_commit: false,
+        no_lock: true,
+        no_readme: true,
+    };
+
+    let result = bump(args);
+    assert!(result.is_ok(), "Bump failed: {:?}", result.err());
+
+    // Verify package.json is in the commit with updated version
+    let repo = gix::open(dir.path()).expect("Failed to open repo");
+    let head = repo.head().expect("Failed to read HEAD");
+    let commit_id = head.id().expect("HEAD not pointing to commit");
+    let commit = repo
+        .find_object(commit_id)
+        .expect("Failed to find commit")
+        .try_into_commit()
+        .expect("Not a commit");
+
+    let tree = commit.tree().expect("Failed to get tree");
+
+    let entry = tree
+        .lookup_entry_by_path("package.json")
+        .expect("Failed to lookup")
+        .expect("package.json not in commit");
+
+    let blob = entry.object().unwrap().try_into_blob().unwrap();
+    let content = blob.data.to_str_lossy();
+
+    assert!(
+        content.contains("1.0.1"),
+        "package.json should have new version in commit: {}",
+        content
+    );
+}
+
+/// Test that multiple pre_bump_hooks run in order.
+#[test]
+#[serial_test::serial]
+fn test_multiple_pre_bump_hooks_run_in_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = dir.path().join("Cargo.toml");
+    let marker_file = dir.path().join("hook_order.txt");
+
+    // Create Cargo.toml with multiple hooks that append to a file
+    let cargo_content = format!(
+        r#"[package]
+name = "test-hooks"
+version = "1.0.0"
+
+[package.metadata.version-info]
+pre_bump_hooks = [
+    "echo 'first' >> {}",
+    "echo 'second' >> {}",
+    "echo 'third' >> {}"
+]
+"#,
+        marker_file.display(),
+        marker_file.display(),
+        marker_file.display()
+    );
+    std::fs::write(&manifest_path, &cargo_content).unwrap();
+
+    // Create src directory
+    let src_dir = dir.path().join("src");
+    std::fs::create_dir_all(&src_dir).unwrap();
+    std::fs::write(src_dir.join("lib.rs"), "// Test library\n").unwrap();
+
+    init_test_git_repo(dir.path());
+
+    let args = BumpArgs {
+        manifest_path: Some(manifest_path.clone()),
+        patch: true,
+        version: None,
+        auto: false,
+        major: false,
+        minor: false,
+        owner: None,
+        repo: None,
+        github_token: None,
+        no_commit: true,
+        no_lock: true,
+        no_readme: true,
+    };
+
+    let result = bump(args);
+    assert!(result.is_ok(), "Bump failed: {:?}", result.err());
+
+    // Verify hooks ran in order
+    let content = std::fs::read_to_string(&marker_file).unwrap();
+    let lines: Vec<&str> = content.lines().collect();
+    assert_eq!(lines, vec!["first", "second", "third"]);
+}
+
+/// Test that empty hook configuration works (no hooks configured).
+#[test]
+#[serial_test::serial]
+fn test_no_hooks_configured() {
+    let dir = create_temp_cargo_project(
+        r#"[package]
+name = "test-no-hooks"
+version = "1.0.0"
+"#,
+    );
+    let manifest_path = dir.path().join("Cargo.toml");
+
+    init_test_git_repo(dir.path());
+
+    let args = BumpArgs {
+        manifest_path: Some(manifest_path.clone()),
+        patch: true,
+        version: None,
+        auto: false,
+        major: false,
+        minor: false,
+        owner: None,
+        repo: None,
+        github_token: None,
+        no_commit: true,
+        no_lock: true,
+        no_readme: true,
+    };
+
+    let result = bump(args);
+    assert!(result.is_ok(), "Bump should work without hooks configured");
+
+    let content = std::fs::read_to_string(&manifest_path).unwrap();
+    assert!(content.contains("version = \"1.0.1\""));
+}

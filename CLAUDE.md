@@ -115,10 +115,20 @@ The `bump` subcommand (`src/commands/bump/`) is the most complex:
 - `diff.rs` - Diff generation and hunk-level filtering
 - `index.rs` - Git index operations using gix
 - `tree.rs` - Git tree building
+- `hooks.rs` - Pre/post bump hook execution
 - `tests.rs` - Unit tests
 
-Key feature: Hunk-level selective staging commits only version-related
-changes, leaving other uncommitted work untouched.
+Key features:
+
+- Hunk-level selective staging commits only version-related changes,
+  leaving other uncommitted work untouched.
+- Hook support via `[package.metadata.version-info]` in Cargo.toml:
+  - `pre_bump_hooks` - commands run after Cargo.toml update, before
+    commit
+  - `post_bump_hooks` - commands run after commit
+  - `additional_files` - extra files to include in version commit
+- Updates both `[package]` and `[workspace.package]` version fields
+  when both exist with explicit versions.
 
 ### Key dependencies
 
