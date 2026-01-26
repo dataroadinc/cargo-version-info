@@ -168,6 +168,7 @@ pub fn run_hook(command: &str, version: &str, working_dir: &Path) -> Result<()> 
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use tempfile::TempDir;
 
     use super::*;
