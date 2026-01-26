@@ -1,2 +1,6 @@
 [build]
 rustflags = ["-Dwarnings", "-Wmissing-docs"]
+
+[env]
+# Run tests single-threaded to avoid git index conflicts
+RUST_TEST_THREADS = "1"

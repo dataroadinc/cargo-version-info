@@ -82,7 +82,7 @@ Use the command name as scope when modifying a specific command:
 - `deps` - dependency updates
 - `ci` - CI/CD workflows (use with `ci:` or `chore:` type)
 - `config` - configuration files
-- `hooks` - git hooks, Sloughi
+- `hooks` - git hooks, Rhusky
 
 ### Documentation scopes
 

@@ -19,6 +19,7 @@ Cargo plugins:
 Other Rust crates:
 
 - `dotenvage` - Environment variable management
+- `rhusky` - Git hooks manager (like Husky for Rust)
 
 All projects use identical configurations for rustfmt, clippy,
 markdownlint, cocogitto, and git hooks. When making changes to
@@ -84,7 +85,7 @@ cargo +nightly clippy --all-targets --all-features -- -D warnings -W missing-doc
 
 ## Code style
 
-- **Rust Edition**: 2024, MSRV 1.92.0
+- **Rust Edition**: 2024, MSRV 1.93.0
 - **Formatting**: Uses nightly rustfmt with vertical imports grouped
   by std/external/crate (see `rustfmt.toml`)
 - **Clippy**: Nightly with strict settings (max 120 lines/function,
