@@ -125,31 +125,36 @@ pub fn update_cargo_toml_version(
         .parse::<DocumentMut>()
         .with_context(|| format!("Failed to parse TOML in {}", manifest_path.display()))?;
 
-    // Try to update version in [package] section first
-    // The as_table_mut() method returns None if the item isn't a table
-    let updated = if let Some(package) = doc.get_mut("package").and_then(|p| p.as_table_mut()) {
-        // Found [package] section - update version
-        // The value() function creates a properly formatted TOML value
+    // Track whether we updated each section
+    let mut package_updated = false;
+    let mut workspace_updated = false;
+
+    // Update [package] version if present AND has an explicit version field
+    // (not version.workspace = true)
+    if let Some(package) = doc.get_mut("package").and_then(|p| p.as_table_mut())
+        && package.contains_key("version")
+        // Check if version is a string (explicit) vs table (workspace inheritance)
+        && package.get("version").is_some_and(|v| v.as_str().is_some())
+    {
         package.insert("version", value(new_version));
-        true
-    } else if let Some(workspace_package) = doc
+        package_updated = true;
+    }
+
+    // Update [workspace.package] version if present
+    if let Some(workspace_package) = doc
         .get_mut("workspace")
         .and_then(|w| w.as_table_mut())
         .and_then(|w| w.get_mut("package"))
         .and_then(|p| p.as_table_mut())
+        && workspace_package.contains_key("version")
     {
-        // Found [workspace.package] section - update version
-        // This is used in workspace crates that inherit version from the workspace
         workspace_package.insert("version", value(new_version));
-        true
-    } else {
-        // Neither [package] nor [workspace.package] found
-        false
-    };
+        workspace_updated = true;
+    }
 
-    if !updated {
+    if !package_updated && !workspace_updated {
         anyhow::bail!(
-            "Could not find [package] or [workspace.package] section in {}",
+            "Could not find version in [package] or [workspace.package] section in {}",
             manifest_path.display()
         );
     }
@@ -228,6 +233,58 @@ edition = "2021"
     }
 
     #[test]
+    fn test_update_both_package_and_workspace_version() {
+        // Test case: Cargo.toml with both [workspace.package] and [package]
+        // having explicit version fields (like dotenvage)
+        let (_dir, manifest_path) = create_temp_manifest(
+            r#"[workspace]
+members = ["npm/dotenvage-napi"]
+
+[workspace.package]
+version = "0.2.1"
+edition = "2024"
+
+[package]
+name = "dotenvage"
+version = "0.2.1"
+edition.workspace = true
+"#,
+        );
+
+        update_cargo_toml_version(&manifest_path, "0.2.1", "0.2.2").unwrap();
+
+        let content = std::fs::read_to_string(&manifest_path).unwrap();
+        // Both sections should be updated
+        assert!(!content.contains("0.2.1"), "Old version should be gone");
+        // Count occurrences of new version - should appear twice
+        let count = content.matches("\"0.2.2\"").count();
+        assert_eq!(count, 2, "New version should appear in both sections");
+    }
+
+    #[test]
+    fn test_package_with_workspace_inheritance_not_updated() {
+        // Test case: [package] version inherits from workspace (version.workspace =
+        // true) Only [workspace.package] should be updated
+        let (_dir, manifest_path) = create_temp_manifest(
+            r#"[workspace.package]
+version = "1.0.0"
+
+[package]
+name = "test"
+version.workspace = true
+"#,
+        );
+
+        update_cargo_toml_version(&manifest_path, "1.0.0", "2.0.0").unwrap();
+
+        let content = std::fs::read_to_string(&manifest_path).unwrap();
+        // workspace.package should be updated
+        assert!(content.contains("[workspace.package]\nversion = \"2.0.0\""));
+        // package should still have workspace inheritance
+        assert!(content.contains("version.workspace = true"));
+    }
+
+    #[test]
     fn test_no_package_section_error() {
         let (_dir, manifest_path) = create_temp_manifest(
             r#"[dependencies]
@@ -237,11 +294,6 @@ some-crate = "1.0"
 
         let result = update_cargo_toml_version(&manifest_path, "0.1.0", "0.2.0");
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("Could not find [package]")
-        );
+        assert!(result.unwrap_err().to_string().contains("Could not find"));
     }
 }

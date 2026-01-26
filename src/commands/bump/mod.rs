@@ -114,6 +114,7 @@
 pub mod args;
 pub mod commit;
 pub mod diff;
+pub mod hooks;
 pub mod index;
 pub mod readme_update;
 pub mod signing;
@@ -253,6 +254,9 @@ pub fn bump(args: BumpArgs) -> Result<()> {
     let package = find_package(args.manifest_path.as_deref())?;
     let current_version = package.version.to_string();
     let package_name = package.name.clone();
+
+    // Load hook configuration from [package.metadata.version-info]
+    let hook_config = hooks::VersionInfoConfig::from_package(&package);
     logger.finish();
 
     // Step 2: Calculate target version based on command args
@@ -343,7 +347,16 @@ pub fn bump(args: BumpArgs) -> Result<()> {
         None
     };
 
-    // Step 7: Commit changes (unless --no-commit)
+    // Step 7: Run pre-bump hooks
+    // These hooks run after all file updates but before commit, allowing them to
+    // modify additional files that will be included in the commit
+    for hook in &hook_config.pre_bump_hooks {
+        logger.status("Running", &format!("hook: {}", hook));
+        hooks::run_hook(hook, &target_version, manifest_dir)?;
+        logger.finish();
+    }
+
+    // Step 8: Commit changes (unless --no-commit)
     if !args.no_commit {
         logger.status("Committing", "version changes");
 
@@ -375,6 +388,27 @@ pub fn bump(args: BumpArgs) -> Result<()> {
             });
         }
 
+        // Include additional files from hook configuration
+        for file_path in &hook_config.additional_files {
+            let path = manifest_dir.join(file_path);
+            if path.exists() {
+                let content = std::fs::read_to_string(&path)
+                    .with_context(|| format!("Failed to read {}", path.display()))?;
+                let head_content = get_file_head_content(manifest_path, &path).ok();
+                additional_files.push(AdditionalFile {
+                    path,
+                    working_content: content,
+                    head_content,
+                    file_type: FileType::Other,
+                });
+            } else {
+                logger.print_message(&format!(
+                    "⚠️  Additional file not found: {}",
+                    path.display()
+                ));
+            }
+        }
+
         // Commit Cargo.toml (with selective staging) plus additional files
         commit::commit_version_changes_with_files(
             manifest_path,
@@ -393,6 +427,13 @@ pub fn bump(args: BumpArgs) -> Result<()> {
             file_count,
             if file_count == 1 { "" } else { "s" }
         ));
+
+        // Step 9: Run post-bump hooks (only after commit)
+        for hook in &hook_config.post_bump_hooks {
+            logger.status("Running", &format!("hook: {}", hook));
+            hooks::run_hook(hook, &target_version, manifest_dir)?;
+            logger.finish();
+        }
     } else {
         logger.print_message(&format!(
             "✓ Updated version to {} (not committed)",
