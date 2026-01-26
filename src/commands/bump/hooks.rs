@@ -141,9 +141,17 @@ pub fn run_hook(command: &str, version: &str, working_dir: &Path) -> Result<()> 
     // Replace {{version}} placeholder with actual version
     let expanded = command.replace("{{version}}", version);
 
-    // Execute the command via shell
+    // Execute the command via platform-appropriate shell
+    #[cfg(unix)]
     let status = std::process::Command::new("sh")
         .args(["-c", &expanded])
+        .current_dir(working_dir)
+        .status()
+        .with_context(|| format!("Failed to run hook: {}", command))?;
+
+    #[cfg(windows)]
+    let status = std::process::Command::new("cmd")
+        .args(["/C", &expanded])
         .current_dir(working_dir)
         .status()
         .with_context(|| format!("Failed to run hook: {}", command))?;
@@ -165,12 +173,14 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(unix)]
     fn test_run_hook_success() {
         let dir = TempDir::new().unwrap();
         run_hook("true", "1.0.0", dir.path()).unwrap();
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_run_hook_failure() {
         let dir = TempDir::new().unwrap();
         let result = run_hook("false", "1.0.0", dir.path());
@@ -179,6 +189,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_run_hook_version_substitution() {
         let dir = TempDir::new().unwrap();
         let output_file = dir.path().join("version.txt");

@@ -700,8 +700,10 @@ version = "0.5.0"
     );
 }
 
+// Skip on Windows due to gix file locking issues
 #[test]
 #[serial_test::serial]
+#[cfg(unix)]
 fn test_only_version_file_in_commit_not_other_staged_files() {
     // Verify that bump doesn't include other staged files
     let dir = tempfile::tempdir().unwrap();
@@ -1638,12 +1640,13 @@ version = "2.0.0"
 }
 
 // ============================================================================
-// Hook Integration Tests
+// Hook Integration Tests (Unix only - hooks use shell commands)
 // ============================================================================
 
 /// Test that pre_bump_hooks are executed with correct version substitution.
 #[test]
 #[serial_test::serial]
+#[cfg(unix)]
 fn test_pre_bump_hooks_executed() {
     let dir = tempfile::tempdir().unwrap();
     let manifest_path = dir.path().join("Cargo.toml");
@@ -1703,6 +1706,7 @@ pre_bump_hooks = ["echo '{{{{version}}}}' > {}"]
 /// Test that failing pre_bump_hooks abort the bump operation.
 #[test]
 #[serial_test::serial]
+#[cfg(unix)]
 fn test_pre_bump_hooks_failure_aborts_bump() {
     let dir = tempfile::tempdir().unwrap();
     let manifest_path = dir.path().join("Cargo.toml");
@@ -1754,6 +1758,7 @@ pre_bump_hooks = ["exit 1"]
 /// Test that post_bump_hooks are executed after successful commit.
 #[test]
 #[serial_test::serial]
+#[cfg(unix)]
 fn test_post_bump_hooks_executed_after_commit() {
     let dir = tempfile::tempdir().unwrap();
     let manifest_path = dir.path().join("Cargo.toml");
@@ -1813,6 +1818,7 @@ post_bump_hooks = ["echo '{{{{version}}}}' > {}"]
 /// Test that post_bump_hooks are NOT executed when --no-commit is used.
 #[test]
 #[serial_test::serial]
+#[cfg(unix)]
 fn test_post_bump_hooks_skipped_with_no_commit() {
     let dir = tempfile::tempdir().unwrap();
     let manifest_path = dir.path().join("Cargo.toml");
@@ -1866,6 +1872,7 @@ post_bump_hooks = ["echo 'executed' > {}"]
 /// Test that additional_files are included in the version bump commit.
 #[test]
 #[serial_test::serial]
+#[cfg(unix)]
 fn test_additional_files_included_in_commit() {
     let dir = tempfile::tempdir().unwrap();
     let manifest_path = dir.path().join("Cargo.toml");
@@ -1973,6 +1980,7 @@ additional_files = ["package.json"]
 /// Test that multiple pre_bump_hooks run in order.
 #[test]
 #[serial_test::serial]
+#[cfg(unix)]
 fn test_multiple_pre_bump_hooks_run_in_order() {
     let dir = tempfile::tempdir().unwrap();
     let manifest_path = dir.path().join("Cargo.toml");
