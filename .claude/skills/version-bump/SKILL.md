@@ -78,11 +78,31 @@ cargo version-info next
 
 ## After Bumping
 
-After running bump, verify the commit:
+After running bump, verify the commit includes all version-related files:
 
 ```bash
 git log -1 --oneline
 git diff HEAD~1 --stat
+git status
+```
+
+**Important**: Check that all files modified by pre-bump hooks are
+included in the commit. If `git status` shows uncommitted version
+changes (from hooks), amend the commit:
+
+```bash
+git add <missing-files>
+git commit --amend --no-edit
+```
+
+Then add those files to `additional_files` in Cargo.toml to prevent
+this in future bumps:
+
+```toml
+[package.metadata.version-info]
+additional_files = [
+    "path/to/file"
+]
 ```
 
 Then push when ready:
