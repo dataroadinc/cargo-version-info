@@ -513,24 +513,22 @@ fn write_blob(repo: &gix::Repository, content: &str) -> Result<gix::ObjectId> {
     Ok(blob_id)
 }
 
-/// Update a tree by replacing multiple files' blobs.
+/// Update a tree by replacing multiple files' blobs, including nested paths.
 ///
 /// Takes HEAD's tree and creates a NEW tree with the specified files changed.
 /// All other files remain exactly as they were in HEAD.
 ///
-/// **CRITICAL**: A git commit represents the FULL state of the repository.
-/// If we create a tree with only modified files, the commit would DELETE
-/// all other files! This function preserves all existing files.
+/// This function handles nested paths by recursively updating subtrees.
+/// For example, to update `npm/package.json`:
+/// 1. Find the `npm` directory entry in the root tree
+/// 2. Recursively update `package.json` within that subtree
+/// 3. Replace the `npm` entry with the new subtree ID
 ///
 /// # Arguments
 ///
 /// * `repo` - The git repository
 /// * `head_tree` - The tree from HEAD commit
 /// * `file_updates` - List of (file_path, new_blob_id) pairs
-///
-/// # Returns
-///
-/// Returns the object ID of the new tree with the files updated.
 fn update_tree_with_files(
     repo: &gix::Repository,
     head_tree: &gix::Tree,
@@ -543,67 +541,109 @@ fn update_tree_with_files(
         tree,
     };
 
-    // Build a map for quick lookup of file updates
-    let update_map: HashMap<&[u8], &gix::ObjectId> = file_updates
-        .iter()
-        .map(|(path, blob_id)| (path.as_os_str().as_encoded_bytes(), blob_id))
-        .collect();
+    // Group updates by first path component
+    // For "npm/package.json" -> key="npm", remaining="package.json"
+    // For "Cargo.toml" -> key="Cargo.toml", remaining=None
+    let mut grouped: HashMap<Vec<u8>, Vec<(Option<std::path::PathBuf>, gix::ObjectId)>> =
+        HashMap::new();
 
-    // Get all entries from HEAD's tree
+    for (path, blob_id) in file_updates {
+        let mut components = path.components();
+        if let Some(first) = components.next() {
+            let first_bytes = first.as_os_str().as_encoded_bytes().to_vec();
+            let remaining: std::path::PathBuf = components.collect();
+            let remaining = if remaining.as_os_str().is_empty() {
+                None
+            } else {
+                Some(remaining)
+            };
+            grouped
+                .entry(first_bytes)
+                .or_default()
+                .push((remaining, *blob_id));
+        }
+    }
+
+    // Build new tree entries
     let mut tree_entries: Vec<tree::Entry> = Vec::new();
 
-    // Iterate through HEAD's tree entries
     for entry in head_tree.iter() {
         let entry = entry.context("Failed to iterate tree entry")?;
-        let entry_path = entry.filename();
+        let entry_name = entry.filename();
 
-        // Check if this file has an update
-        if let Some(new_blob_id) = update_map.get(entry_path.as_bytes()) {
-            // This file has an update - use the new blob
-            tree_entries.push(tree::Entry {
-                mode: entry.mode(),
-                filename: entry_path.into(),
-                oid: **new_blob_id,
-            });
+        if let Some(updates) = grouped.remove(entry_name.as_bytes()) {
+            // This entry has updates - check if direct or nested
+            let direct_updates: Vec<_> = updates
+                .iter()
+                .filter(|(remaining, _)| remaining.is_none())
+                .collect();
+            let nested_updates: Vec<_> = updates
+                .iter()
+                .filter_map(|(remaining, blob_id)| {
+                    remaining.as_ref().map(|path| (path.clone(), *blob_id))
+                })
+                .collect();
+
+            if !direct_updates.is_empty() {
+                // Direct file update - use new blob (take the last one if multiple)
+                let (_, blob_id) = direct_updates.last().unwrap();
+                tree_entries.push(tree::Entry {
+                    mode: entry.mode(),
+                    filename: entry_name.into(),
+                    oid: *blob_id,
+                });
+            } else if !nested_updates.is_empty() {
+                // Updates are in subdirectory - recurse
+                let subtree = entry
+                    .object()
+                    .context("Failed to get subtree object")?
+                    .try_into_tree()
+                    .context("Entry is not a tree")?;
+                let new_subtree_id = update_tree_with_files(repo, &subtree, &nested_updates)?;
+                tree_entries.push(tree::Entry {
+                    mode: entry.mode(),
+                    filename: entry_name.into(),
+                    oid: new_subtree_id,
+                });
+            }
         } else {
-            // Keep the entry unchanged from HEAD
+            // No updates for this entry - keep unchanged
             tree_entries.push(tree::Entry {
                 mode: entry.mode(),
-                filename: entry_path.into(),
+                filename: entry_name.into(),
                 oid: entry.oid().to_owned(),
             });
         }
     }
 
     // Sort entries using git's special sorting rules
-    tree_entries.sort_by(|a, b| {
+    tree_entries.sort_by(|entry_a, entry_b| {
         use gix::objs::tree::EntryKind;
 
-        let a_name = if matches!(a.mode.kind(), EntryKind::Tree) {
-            let mut name = a.filename.to_vec();
+        let a_name = if matches!(entry_a.mode.kind(), EntryKind::Tree) {
+            let mut name = entry_a.filename.to_vec();
             name.push(b'/');
             name
         } else {
-            a.filename.to_vec()
+            entry_a.filename.to_vec()
         };
 
-        let b_name = if matches!(b.mode.kind(), EntryKind::Tree) {
-            let mut name = b.filename.to_vec();
+        let b_name = if matches!(entry_b.mode.kind(), EntryKind::Tree) {
+            let mut name = entry_b.filename.to_vec();
             name.push(b'/');
             name
         } else {
-            b.filename.to_vec()
+            entry_b.filename.to_vec()
         };
 
         a_name.cmp(&b_name)
     });
 
-    // Build the tree
+    // Build and write the tree
     let tree = Tree {
         entries: tree_entries,
     };
 
-    // Write the tree to the object database
     let tree_id = repo
         .write_object(&tree)
         .context("Failed to write updated tree")?
