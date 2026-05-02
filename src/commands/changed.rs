@@ -161,17 +161,20 @@ pub fn changed(args: ChangedArgs) -> Result<()> {
                         (tag.to_string(), tag_oid)
                     })
                 })
-                .filter_map(|(tag_name, tag_oid)| {
-                    // Try to resolve to a commit
-                    let commit = repo.find_object(tag_oid).ok()?.try_into_commit().ok()?;
-                    Some((tag_name, commit.id))
+                .filter_map(|(tag_name, _tag_oid)| {
+                    // Selecting "latest" by semver is what release pipelines
+                    // actually want — sorting by OID is meaningless, and
+                    // sorting by commit time misranks out-of-order tags.
+                    // Annotated and lightweight tags are treated alike: we
+                    // only need the tag name to compare, not the target.
+                    let stripped = tag_name
+                        .strip_prefix('v')
+                        .or_else(|| tag_name.strip_prefix('V'))
+                        .unwrap_or(&tag_name);
+                    let version = cargo_metadata::semver::Version::parse(stripped).ok()?;
+                    Some((tag_name, version))
                 })
-                .max_by_key(|(_, commit_id)| {
-                    // Sort by commit time (most recent first)
-                    // For simplicity, use commit ID as proxy for time ordering
-                    // (newer commits have larger IDs in most cases)
-                    Some(*commit_id)
-                })
+                .max_by(|(_, a), (_, b)| a.cmp(b))
                 .map(|(tag_name, _)| tag_name)
         })
         .unwrap_or_else(|| "v0.0.0".to_string());
