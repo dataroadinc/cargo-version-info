@@ -184,7 +184,7 @@ pub fn build_tree_from_index(index_state: &State, repo: &gix::Repository) -> Res
         for (path_parts, mode, oid) in entries {
             // Reconstruct the filename from path parts
             // For flattened paths (subdirectories), this includes the full path
-            let filename: bstr::BString = path_parts.join(&[b'/'][..]).into();
+            let filename: bstr::BString = path_parts.join(&b"/"[..]).into();
 
             // Convert index entry mode to tree entry mode
             let tree_mode = convert_mode_to_tree_mode(*mode);
