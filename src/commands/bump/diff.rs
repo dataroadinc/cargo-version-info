@@ -66,7 +66,10 @@
 //! - Identify change regions (hunks)
 //! - Reconstruct file content with selected changes only
 
-use anyhow::Result;
+use anyhow::{
+    Context,
+    Result,
+};
 use regex::Regex;
 use similar::{
     ChangeTag,
@@ -351,185 +354,103 @@ pub fn has_non_readme_version_changes(
     false
 }
 
-/// Check if a line belongs to our crate's package block in Cargo.lock.
+/// Locate our crate's `[[package]]` block in a Cargo.lock by structure.
 ///
-/// Cargo.lock has the format:
-/// ```toml
-/// [[package]]
-/// name = "crate-name"
-/// version = "1.0.0"
-/// ...
-/// ```
+/// Returns the byte range `[start, end)` covering the block from its
+/// `[[package]]` header up to (but not including) the next top-level
+/// section header (`[[` or `[`) or end-of-file. The trailing blank line
+/// between blocks is included in the range so that splicing two blocks
+/// preserves Cargo.lock formatting.
 ///
-/// We track if we're inside the package block for our crate.
-fn is_cargo_lock_version_line(
-    line: &str,
-    crate_name: &str,
-    old_version: &str,
-    new_version: &str,
-) -> bool {
-    // Check if this line references our crate's name or version
-    let name_pattern = format!(r#"name\s*=\s*"{}""#, regex::escape(crate_name));
-    if let Ok(re) = Regex::new(&name_pattern)
-        && re.is_match(line)
-    {
-        return true;
-    }
+/// Returns `None` if no `[[package]]` block names our crate.
+fn find_package_block(content: &str, crate_name: &str) -> Option<(usize, usize)> {
+    let target_name = format!(r#"name = "{crate_name}""#);
+    let mut cursor = 0usize;
+    let mut current_block_start: Option<usize> = None;
+    let mut found_block_start: Option<usize> = None;
 
-    // Check for version lines with old or new version
-    for version in [old_version, new_version] {
-        let version_pattern = format!(r#"version\s*=\s*"{}""#, regex::escape(version));
-        if let Ok(re) = Regex::new(&version_pattern)
-            && re.is_match(line)
-        {
-            return true;
+    for line in content.split_inclusive('\n') {
+        let line_start = cursor;
+        cursor += line.len();
+        let trimmed = line.trim_end();
+
+        if trimmed == "[[package]]" {
+            if found_block_start.is_some() {
+                // The next package starts here; close ours.
+                return Some((found_block_start?, line_start));
+            }
+            current_block_start = Some(line_start);
+        } else if trimmed.starts_with('[') && trimmed != "[[package]]" {
+            // Different top-level section (e.g. `[metadata]`); close ours.
+            if found_block_start.is_some() {
+                return Some((found_block_start?, line_start));
+            }
+            current_block_start = None;
+        } else if trimmed == target_name && found_block_start.is_none() {
+            found_block_start = current_block_start;
         }
     }
 
-    false
+    found_block_start.map(|start| (start, cursor))
 }
 
-/// Apply only Cargo.lock version-related hunks for our crate.
+/// Splice our crate's `[[package]]` block from `working_content` into
+/// `head_content`, leaving every other byte of `head_content` untouched.
 ///
-/// This function filters changes to Cargo.lock to include only changes
-/// to our crate's package entry.
+/// This is the structural equivalent of "stage only our crate's lockfile
+/// entry": dependency changes elsewhere stay unstaged. It is robust to
+/// HEAD's recorded version drifting away from `old_version` (e.g. when
+/// Cargo.lock was previously committed at a stale version), which the
+/// older line-pattern matcher silently mishandled.
 ///
-/// # Algorithm
-///
-/// We use a stateful approach to track which package block we're in:
-/// 1. Parse the diff line by line
-/// 2. Track the current package name based on `name = "..."` lines
-/// 3. For version changes, only include those for our crate
-///
-/// # Arguments
-///
-/// * `head_content` - Content of Cargo.lock in HEAD commit
-/// * `working_content` - Content of Cargo.lock in working directory
-/// * `crate_name` - Our crate's name
-/// * `old_version` - The version string being replaced
-/// * `new_version` - The version string being added
-///
-/// # Returns
-///
-/// Returns the partially-staged content (HEAD + only our crate's version
-/// changes).
+/// `_old_version` and `_new_version` are accepted for API compatibility
+/// but no longer consulted.
 pub fn apply_cargo_lock_version_hunks(
     head_content: &str,
     working_content: &str,
     crate_name: &str,
-    old_version: &str,
-    new_version: &str,
+    _old_version: &str,
+    _new_version: &str,
 ) -> Result<String> {
-    let diff = TextDiff::from_lines(head_content, working_content);
+    let (work_start, work_end) = find_package_block(working_content, crate_name)
+        .with_context(|| format!("crate `{crate_name}` not found in working Cargo.lock"))?;
+    let working_block = &working_content[work_start..work_end];
 
-    let mut result = Vec::new();
-
-    // Track context: are we in a hunk that relates to our crate?
-    // We use a simple heuristic: if a hunk contains our crate name,
-    // all version changes in that hunk are for our crate.
-    let changes: Vec<_> = diff.iter_all_changes().collect();
-
-    // Group changes into hunks (sequences of Insert/Delete surrounded by Equal)
-    let mut current_hunk: Vec<_> = Vec::new();
-    let mut hunks: Vec<Vec<_>> = Vec::new();
-
-    for change in &changes {
-        match change.tag() {
-            ChangeTag::Equal => {
-                if !current_hunk.is_empty() {
-                    hunks.push(current_hunk.clone());
-                    current_hunk.clear();
-                }
-                // Equal lines are processed directly
-                result.push(change.value());
-            }
-            ChangeTag::Delete | ChangeTag::Insert => {
-                current_hunk.push(change);
-            }
+    match find_package_block(head_content, crate_name) {
+        Some((head_start, head_end)) => {
+            let mut out = String::with_capacity(
+                head_content.len() + working_block.len() - (head_end - head_start),
+            );
+            out.push_str(&head_content[..head_start]);
+            out.push_str(working_block);
+            out.push_str(&head_content[head_end..]);
+            Ok(out)
         }
+        // HEAD has no entry for our crate (e.g. brand-new lockfile path):
+        // there is no anchor to splice into, so the cleanest choice is to
+        // leave HEAD as-is. The caller will detect this via
+        // has_non_cargo_lock_version_changes returning false.
+        None => Ok(head_content.to_string()),
     }
-
-    // Don't forget the last hunk
-    if !current_hunk.is_empty() {
-        hunks.push(current_hunk);
-    }
-
-    // Now we have hunks. We need to rebuild the file from them.
-    // Reset result and process properly
-    result.clear();
-
-    for change in &changes {
-        let line = change.value();
-
-        match change.tag() {
-            ChangeTag::Equal => {
-                result.push(line);
-            }
-            ChangeTag::Delete => {
-                // Check if this is a version line for our crate
-                let is_our_version =
-                    is_cargo_lock_version_line(line, crate_name, old_version, new_version);
-
-                if is_our_version {
-                    // Our crate's version line - apply the deletion (skip it)
-                } else {
-                    // Other package's line - keep it
-                    result.push(line);
-                }
-            }
-            ChangeTag::Insert => {
-                // Check if this is a version line for our crate
-                let is_our_version =
-                    is_cargo_lock_version_line(line, crate_name, old_version, new_version);
-
-                if is_our_version {
-                    // Our crate's version line - apply the insertion (include it)
-                    result.push(line);
-                } else {
-                    // Other package's line - don't apply (skip it)
-                }
-            }
-        }
-    }
-
-    Ok(result.join(""))
 }
 
-/// Check if Cargo.lock has changes beyond our crate's version modification.
+/// Check if `working_content` differs from `head_content` outside our
+/// crate's `[[package]]` block.
 ///
-/// # Arguments
-///
-/// * `head_content` - Content from HEAD
-/// * `working_content` - Content from working directory
-/// * `crate_name` - Our crate's name
-/// * `old_version` - Old version string
-/// * `new_version` - New version string
-///
-/// # Returns
-///
-/// Returns `true` if there are non-version changes (e.g., dependency updates).
+/// Implemented as: splice our block from working into head; if the
+/// result still differs from working, the difference must lie outside
+/// our block. Robust to HEAD's recorded version being arbitrarily stale.
 pub fn has_non_cargo_lock_version_changes(
     head_content: &str,
     working_content: &str,
     crate_name: &str,
-    old_version: &str,
-    new_version: &str,
+    _old_version: &str,
+    _new_version: &str,
 ) -> bool {
-    let diff = TextDiff::from_lines(head_content, working_content);
-
-    for change in diff.iter_all_changes() {
-        if matches!(change.tag(), ChangeTag::Delete | ChangeTag::Insert) {
-            let line = change.value();
-            let is_our_version =
-                is_cargo_lock_version_line(line, crate_name, old_version, new_version);
-
-            if !is_our_version {
-                return true;
-            }
-        }
+    match apply_cargo_lock_version_hunks(head_content, working_content, crate_name, "", "") {
+        Ok(staged) => staged != working_content,
+        Err(_) => true,
     }
-
-    false
 }
 
 #[cfg(test)]
@@ -748,6 +669,43 @@ version = "2.0.0"
                 || staged.matches(r#"version = "0.2.0""#).count() == 1,
             "Only our crate should have updated version"
         );
+    }
+
+    #[test]
+    fn test_apply_cargo_lock_version_hunks_stale_head_version() {
+        // Regression: HEAD's recorded version (0.0.15) is older than the
+        // bump command's `old_version` (0.0.16). The structural splice
+        // must replace the entire block, not just lines matching the
+        // expected old/new strings.
+        let head = r#"[[package]]
+name = "my-crate"
+version = "0.0.15"
+dependencies = [
+ "anyhow",
+]
+
+[[package]]
+name = "other-crate"
+version = "1.0.0"
+"#;
+        let working = r#"[[package]]
+name = "my-crate"
+version = "0.0.17"
+dependencies = [
+ "anyhow",
+]
+
+[[package]]
+name = "other-crate"
+version = "1.0.0"
+"#;
+
+        let staged =
+            apply_cargo_lock_version_hunks(head, working, "my-crate", "0.0.16", "0.0.17").unwrap();
+
+        assert_eq!(staged.matches(r#"version = "0.0.17""#).count(), 1);
+        assert!(!staged.contains(r#"version = "0.0.15""#));
+        assert!(!staged.contains(r#"version = "0.0.16""#));
     }
 
     #[test]
